@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, use } from 'react';
+import React, { useEffect, useStaimport { create } from 'zustand';
 import usePartySocket from 'partysocket/react';
 import { supabase } from '@/lib/supabase';
 import { useAuctionStore } from '@/store/auctionStore';
@@ -14,12 +14,10 @@ export default function TeamDashboardPage({ params }: { params: Promise<{ teamId
     const [roster, setRoster] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    const [unsoldPlayers, setUnsoldPlayers] = useState<any[]>([]);
     const [activePlayer, setActivePlayer] = useState<any>(null);
-    const [sessionStatus, setSessionStatus] = useState<string>('AUCTION');
     const [liveMatchId, setLiveMatchId] = useState<string | null>(null);
 
-    const fetchTeamData = async () => {
+    const fetchTeamData = React.useCallback(async () => {
         // Fetch specific team
         const { data: teamData } = await supabase
             .from('teams')
@@ -65,11 +63,11 @@ export default function TeamDashboardPage({ params }: { params: Promise<{ teamId
             }
         }
         setIsLoading(false);
-    };
+    }, [teamId]);
 
     useEffect(() => {
         fetchTeamData();
-    }, [teamId]);
+    }, [fetchTeamData]);
 
     useEffect(() => {
         if (!team) return;
@@ -85,14 +83,9 @@ export default function TeamDashboardPage({ params }: { params: Promise<{ teamId
         return () => { supabase.removeChannel(channel); };
     }, [team?.session_id]);
 
-    useEffect(() => {
-        if (state.currentPlayerId && unsoldPlayers.length > 0) {
-            const p = unsoldPlayers.find(p => p.id === state.currentPlayerId);
-            if (p) setActivePlayer(p);
-        } else if (!state.currentPlayerId || state.status === 'WAITING') {
-            setActivePlayer(null);
-        }
-    }, [state.currentPlayerId, unsoldPlayers, state.status]);
+    const activePlayer = (state.currentPlayerId && state.status !== 'WAITING')
+        ? unsoldPlayers.find(p => p.id === state.currentPlayerId)
+        : null;
 
     // Only connect if we know the sessionId
     // PartySocket handles reconnection if room changes
@@ -274,7 +267,7 @@ export default function TeamDashboardPage({ params }: { params: Promise<{ teamId
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                                {roster.map((r, i) => (
+                                {roster.map((r) => (
                                     <PlayerCard
                                         key={r.players.id}
                                         name={r.players.name}
@@ -308,7 +301,7 @@ function QuotaProgress({ label, current, min, color }: { label: string, current:
     );
 }
 
-function PlayerCard({ name, role, price, nationality, category }: any) {
+function PlayerCard({ name, role, price, category }: any) {
     const isStar = category === 'STAR';
 
     return (
