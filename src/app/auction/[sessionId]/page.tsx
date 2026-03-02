@@ -1,10 +1,27 @@
 'use client';
 
-import React, { useEffect, useState, use } from 'react';
+import React, { useEffect, useState, use, useCallback } from 'react';
 import usePartySocket from 'partysocket/react';
 import { useAuctionStore } from '@/store/auctionStore';
 import { supabase } from '@/lib/supabase';
 import { useSearchParams } from 'next/navigation';
+
+interface TeamData {
+    id: string;
+    session_id: string;
+    name: string;
+    short_name: string;
+    purse: number;
+}
+
+interface PlayerData {
+    id: string;
+    name: string;
+    role: string;
+    nationality: string;
+    category: string;
+    base_price: number;
+}
 
 export default function LiveAuctionPage({ params }: { params: Promise<{ sessionId: string }> }) {
     const { sessionId } = use(params);
@@ -12,27 +29,28 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ sessionI
     const searchParams = useSearchParams();
     const hostName = searchParams.get('host') || 'Host';
 
-    const [teams, setTeams] = useState<any[]>([]);
-    const [unsoldPlayers, setUnsoldPlayers] = useState<any[]>([]);
-    const [activePlayer, setActivePlayer] = useState<any>(null);
+    const [teams, setTeams] = useState<TeamData[]>([]);
+    const [unsoldPlayers, setUnsoldPlayers] = useState<PlayerData[]>([]);
 
     // Host Control Form State
     const [finalPrice, setFinalPrice] = useState<string>('');
     const [selectedTeamId, setSelectedTeamId] = useState<string>('');
     const [isProcessing, setIsProcessing] = useState(false);
 
+    const onMessage = useCallback((e: MessageEvent) => {
+        const message = JSON.parse(e.data as string);
+        if (message.type === 'SYNC') {
+            updateState(message.state as Parameters<typeof updateState>[0]);
+        }
+    }, [updateState]);
+
     const socket = usePartySocket({
         host: process.env.NEXT_PUBLIC_PARTYKIT_HOST || "localhost:1999",
         room: sessionId,
-        onMessage: (e) => {
-            const message = JSON.parse(e.data);
-            if (message.type === 'SYNC') {
-                updateState(message.state);
-            }
-        }
+        onMessage
     });
 
-    const fetchGameData = async () => {
+    const fetchGameData = useCallback(async () => {
         // Fetch Teams for this session
         const { data: teamsData } = await supabase.from('teams')
             .select('*')
@@ -57,33 +75,35 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ sessionI
         // Unsold Queue items from PartyKit State might have depreciated prices, but let's just find base available
         const available = allPlayers.filter(p => !soldPlayerIds.has(p.id));
         setUnsoldPlayers(available);
-    };
+    }, [sessionId]);
 
     useEffect(() => {
-        fetchGameData();
-    }, [sessionId]);
+        const load = async () => {
+            await fetchGameData();
+        };
+        load();
+    }, [fetchGameData]);
+
+    const activePlayer = (state.currentPlayerId && state.status !== 'WAITING')
+        ? unsoldPlayers.find(p => p.id === state.currentPlayerId)
+        : null;
 
     // Sync activePlayer display with PartyKit state
     useEffect(() => {
-        if (state.currentPlayerId && unsoldPlayers.length > 0) {
-            const p = unsoldPlayers.find(p => p.id === state.currentPlayerId);
-            if (p) {
-                setActivePlayer(p);
-                if (!finalPrice || state.status === 'WAITING') {
-                    setFinalPrice(p.base_price.toString());
+        const syncForm = async () => {
+            if (state.status === 'WAITING') {
+                setFinalPrice('');
+                setSelectedTeamId('');
+                setIsProcessing(false);
+            } else if (state.currentPlayerId && unsoldPlayers.length > 0) {
+                const p = unsoldPlayers.find(p => p.id === state.currentPlayerId);
+                if (p) {
+                    setFinalPrice(prev => prev || p.base_price.toString());
                 }
             }
-        } else if (!state.currentPlayerId || state.status === 'WAITING') {
-            setActivePlayer(null);
-        }
-
-        // If state changed to waiting (e.g. initial load), clear out local states
-        if (state.status === 'WAITING') {
-            setFinalPrice('');
-            setSelectedTeamId('');
-            setIsProcessing(false);
-        }
-    }, [state.currentPlayerId, unsoldPlayers, state.status]);
+        };
+        syncForm();
+    }, [state.status, state.currentPlayerId, unsoldPlayers]);
 
     const handleDrawNextPlayer = () => {
         if (unsoldPlayers.length === 0) {
@@ -118,8 +138,20 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ sessionI
         const parsedPrice = parseFloat(finalPrice);
         const winningTeam = teams.find(t => t.id === selectedTeamId);
 
-        if (winningTeam && (winningTeam.purse < parsedPrice)) {
+        if (!winningTeam) {
+            alert("Team not found!");
+            setIsProcessing(false);
+            return;
+        }
+
+        if (winningTeam.purse < parsedPrice) {
             alert("Insufficient purse for this team!");
+            setIsProcessing(false);
+            return;
+        }
+
+        if (!activePlayer) {
+            alert("No active player on the block.");
             setIsProcessing(false);
             return;
         }

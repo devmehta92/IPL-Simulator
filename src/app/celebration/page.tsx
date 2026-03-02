@@ -1,4 +1,5 @@
 import React from 'react';
+import Image from 'next/image';
 
 export default function CelebrationPage() {
     return (
@@ -29,10 +30,13 @@ export default function CelebrationPage() {
 
                     <div className="relative size-64 md:size-80 rounded-full border-4 border-yellow-500 shadow-[0_0_80px_rgba(234,179,8,0.5)] bg-gradient-to-br from-[#0c1a2e] to-[#040e1c] flex items-center justify-center overflow-hidden z-20 transform transition-transform duration-700 hover:scale-105">
                         <div className="absolute inset-0 opacity-50 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] mix-blend-overlay"></div>
-                        <img
+                        <Image
                             alt="Mumbai Indians Logo"
-                            className="w-3/4 h-3/4 object-contain filter drop-shadow-[0_10px_10px_rgba(0,0,0,0.8)]"
+                            className="object-contain filter drop-shadow-[0_10px_10px_rgba(0,0,0,0.8)] !p-6"
                             src="https://lh3.googleusercontent.com/aida-public/AB6AXuBS5QyVWoer10zskGjpJmNBYZE2yOQWeHWbjadxTKbfsNmpI9erOtrQHfjUbqFgnvEeakTaRLEHWrhgmZ1gF0lgVeXGocnUhNw0RetsWXXAcb5b4Go6ihacw830MxitKAXf34tnxvVmAQXEWhnfbctKu1vQx_TjVNhd0MeuDH8R6Ec_11r5H-XyiqOgKcM0Uf8S_HUoK5eGq9VM2loqXzSmVJe8x8h8wWbp1F6CFgaq2MoQADk7PMtZCp2L59S0sEf75oS-aik2IN0"
+                            fill
+                            sizes="(max-width: 768px) 16rem, 20rem"
+                            unoptimized
                         />
                     </div>
 

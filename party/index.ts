@@ -21,12 +21,12 @@ export default class AuctionServer implements Party.Server {
 
     constructor(readonly room: Party.Room) { }
 
-    onConnect(conn: Party.Connection, ctx: Party.ConnectionContext) {
+    onConnect(conn: Party.Connection, _ctx: Party.ConnectionContext) {
         // Send current state to new connection
         conn.send(JSON.stringify({ type: 'SYNC', state: this.state }));
     }
 
-    onMessage(message: string, sender: Party.Connection) {
+    onMessage(message: string, _sender: Party.Connection) {
         const data = JSON.parse(message);
 
         // Host displays a new player on the board

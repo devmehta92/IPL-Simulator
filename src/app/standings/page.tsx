@@ -4,12 +4,13 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { LeagueEngine, TeamStanding } from '@/game/leagueEngine';
 import { useRouter } from 'next/navigation';
+import { TeamData, MatchData } from '@/types';
 
 export default function LeagueStandingsPage() {
     const router = useRouter();
     const [standings, setStandings] = useState<TeamStanding[]>([]);
-    const [teamsMap, setTeamsMap] = useState<Record<string, any>>({});
-    const [nextMatch, setNextMatch] = useState<any>(null);
+    const [teamsMap, setTeamsMap] = useState<Record<string, TeamData>>({});
+    const [nextMatch, setNextMatch] = useState<MatchData | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     // Manual Match State
@@ -44,7 +45,7 @@ export default function LeagueStandingsPage() {
 
             if (!teamsData) return;
 
-            const tMap: Record<string, any> = {};
+            const tMap: Record<string, TeamData> = {};
             const initialStandings: TeamStanding[] = teamsData.map(t => {
                 tMap[t.id] = t;
                 return {
@@ -257,7 +258,7 @@ export default function LeagueStandingsPage() {
                                     onChange={e => setSelectedTeamA(e.target.value)}
                                 >
                                     <option value="" disabled>Select Team...</option>
-                                    {Object.values(teamsMap).map((t: any) => (
+                                    {Object.values(teamsMap).map((t: TeamData) => (
                                         <option key={t.id} value={t.id}>{t.name}</option>
                                     ))}
                                 </select>
@@ -277,7 +278,7 @@ export default function LeagueStandingsPage() {
                                     onChange={e => setSelectedTeamB(e.target.value)}
                                 >
                                     <option value="" disabled>Select Team...</option>
-                                    {Object.values(teamsMap).map((t: any) => (
+                                    {Object.values(teamsMap).map((t: TeamData) => (
                                         <option key={t.id} value={t.id}>{t.name}</option>
                                     ))}
                                 </select>
@@ -298,7 +299,7 @@ export default function LeagueStandingsPage() {
     );
 }
 
-function LeaderboardRow({ rank, name, short, matches, won, lost, nrr, points, tier }: any) {
+function LeaderboardRow({ rank, name, short, matches, won, lost, nrr, points, tier }: { rank: number, name: string, short: string, matches: number, won: number, lost: number, nrr: string, points: number, tier: string }) {
     if (tier === 'gold') {
         return (
             <div className="group relative overflow-hidden rounded-xl bg-gradient-to-r from-yellow-900/40 via-surface-dark to-surface-dark border-l-4 border-yellow-500 shadow-lg shadow-black/20 transform transition-all">

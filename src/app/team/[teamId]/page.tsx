@@ -1,23 +1,48 @@
 'use client';
 
-import React, { useEffect, useStaimport { create } from 'zustand';
+import React, { useEffect, useState, use, useCallback } from 'react';
 import usePartySocket from 'partysocket/react';
 import { supabase } from '@/lib/supabase';
 import { useAuctionStore } from '@/store/auctionStore';
 import { useRouter } from 'next/navigation';
 
+interface TeamData {
+    id: string;
+    session_id: string;
+    name: string;
+    short_name: string;
+    purse: number;
+}
+
+interface PlayerData {
+    id: string;
+    name: string;
+    role: string;
+    nationality: string;
+    category: string;
+    base_price: number;
+}
+
+interface RosterData {
+    player_id: string;
+    bought_for: number;
+    is_starting?: boolean;
+    players: PlayerData;
+}
+
 export default function TeamDashboardPage({ params }: { params: Promise<{ teamId: string }> }) {
     const { teamId } = use(params);
     const router = useRouter();
     const { state, updateState } = useAuctionStore();
-    const [team, setTeam] = useState<any>(null);
-    const [roster, setRoster] = useState<any[]>([]);
+    const [team, setTeam] = useState<TeamData | null>(null);
+    const [roster, setRoster] = useState<RosterData[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    const [activePlayer, setActivePlayer] = useState<any>(null);
     const [liveMatchId, setLiveMatchId] = useState<string | null>(null);
+    const [unsoldPlayers, setUnsoldPlayers] = useState<PlayerData[]>([]);
+    const [sessionStatus, setSessionStatus] = useState<string>('AUCTION');
 
-    const fetchTeamData = React.useCallback(async () => {
+    const fetchTeamData = useCallback(async () => {
         // Fetch specific team
         const { data: teamData } = await supabase
             .from('teams')
@@ -41,13 +66,15 @@ export default function TeamDashboardPage({ params }: { params: Promise<{ teamId
             const { data: rosterData } = await supabase
                 .from('team_rosters')
                 .select(`
+                    player_id,
                     bought_for,
+                    is_starting,
                     players (*)
                 `)
                 .eq('team_id', teamId);
 
             if (rosterData) {
-                setRoster(rosterData);
+                setRoster(rosterData as unknown as RosterData[]);
             }
 
             // Fetch All Teams in session to determine the global sold pool
@@ -66,41 +93,49 @@ export default function TeamDashboardPage({ params }: { params: Promise<{ teamId
     }, [teamId]);
 
     useEffect(() => {
-        fetchTeamData();
+        const load = async () => {
+            await fetchTeamData();
+        };
+        load();
     }, [fetchTeamData]);
 
     useEffect(() => {
-        if (!team) return;
+        if (!team?.session_id) return;
         const channel = supabase.channel('matches_updates')
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches' }, () => {
-                fetchTeamData();
+                const triggerFetch = async () => await fetchTeamData();
+                triggerFetch();
             })
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'league_sessions' }, (payload) => {
-                if (payload.new.id === team.session_id) setSessionStatus(payload.new.status);
+                const newData = payload.new as Record<string, unknown>;
+                if (newData.id === team.session_id) setSessionStatus(newData.status as string);
             })
             .subscribe();
 
         return () => { supabase.removeChannel(channel); };
-    }, [team?.session_id]);
+    }, [team?.session_id, fetchTeamData]);
 
     const activePlayer = (state.currentPlayerId && state.status !== 'WAITING')
         ? unsoldPlayers.find(p => p.id === state.currentPlayerId)
         : null;
+
+    const onMessage = useCallback((e: MessageEvent) => {
+        const message = JSON.parse(e.data as string) as { type: string; state: Record<string, unknown> };
+        if (message.type === 'SYNC') {
+            updateState(message.state as Parameters<typeof updateState>[0]);
+        }
+        if (message.type === 'ALLOCATE_PLAYER') {
+            const fetch = async () => await fetchTeamData();
+            fetch();
+        }
+    }, [updateState, fetchTeamData]);
 
     // Only connect if we know the sessionId
     // PartySocket handles reconnection if room changes
     usePartySocket({
         host: process.env.NEXT_PUBLIC_PARTYKIT_HOST || "localhost:1999",
         room: team?.session_id || "default",
-        onMessage: (e) => {
-            const message = JSON.parse(e.data);
-            if (message.type === 'SYNC') {
-                updateState(message.state);
-            }
-            if (message.type === 'ALLOCATE_PLAYER') {
-                fetchTeamData();
-            }
-        }
+        onMessage
     });
 
     if (isLoading) {
@@ -210,9 +245,18 @@ export default function TeamDashboardPage({ params }: { params: Promise<{ teamId
                             </div>
 
                             {!activePlayer ? (
-                                <div className="bg-black/40 border border-white/5 rounded-xl p-8 text-center flex flex-col items-center gap-3 w-full max-w-2xl mx-auto shadow-inner">
-                                    <span className="material-symbols-outlined text-slate-500 text-4xl">hourglass_bottom</span>
-                                    <span className="text-slate-400 font-bold uppercase tracking-widest text-sm">Waiting for Host to draw...</span>
+                                <div className="flex flex-col gap-4 w-full max-w-2xl mx-auto">
+                                    <button
+                                        onClick={() => router.push(`/team/${teamId}/lineup`)}
+                                        className="w-full flex items-center justify-center gap-3 h-14 bg-surface-dark border border-slate-700 hover:border-primary text-white hover:text-primary font-bold text-lg rounded-xl transition-all shadow-lg active:scale-95 group"
+                                    >
+                                        <span className="material-symbols-outlined text-3xl group-hover:rotate-12 transition-transform">checklist</span>
+                                        Pick Starting XI
+                                    </button>
+                                    <div className="bg-black/40 border border-white/5 rounded-xl p-8 text-center flex flex-col items-center gap-3 shadow-inner">
+                                        <span className="material-symbols-outlined text-slate-500 text-4xl">hourglass_bottom</span>
+                                        <span className="text-slate-400 font-bold uppercase tracking-widest text-sm">Waiting for Host to draw...</span>
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="flex items-center gap-6 bg-black/50 border border-primary/30 rounded-2xl p-6 relative overflow-hidden w-full max-w-4xl mx-auto backdrop-blur-sm">
@@ -275,6 +319,7 @@ export default function TeamDashboardPage({ params }: { params: Promise<{ teamId
                                         price={r.bought_for}
                                         nationality={r.players.nationality}
                                         category={r.players.category}
+                                        isStarting={r.is_starting}
                                     />
                                 ))}
                             </div>
@@ -301,12 +346,18 @@ function QuotaProgress({ label, current, min, color }: { label: string, current:
     );
 }
 
-function PlayerCard({ name, role, price, category }: any) {
+function PlayerCard({ name, role, price, category, nationality, isStarting }: { name: string, role: string, price: number, category: string, nationality?: string, isStarting?: boolean }) {
     const isStar = category === 'STAR';
 
     return (
-        <div className="group relative bg-surface-dark border border-white/10 rounded-2xl overflow-hidden hover:border-primary/50 transition-colors duration-300">
-            {isStar && (
+        <div className={`group relative bg-surface-dark border ${isStarting ? 'border-primary shadow-[0_0_15px_rgba(43,238,121,0.1)]' : 'border-white/10 hover:border-primary/50'} rounded-2xl overflow-hidden transition-colors duration-300`}>
+            {isStarting && (
+                <div className="absolute top-0 right-0 left-0 bg-primary/20 text-center py-1 z-10 border-b border-primary/30">
+                    <span className="text-primary text-[10px] font-black tracking-widest uppercase">STARTING XI</span>
+                </div>
+            )}
+
+            {(isStar && !isStarting) && (
                 <div className="absolute top-0 right-0 p-3 z-10">
                     <span className="bg-yellow-500/20 text-yellow-400 text-[10px] font-black tracking-widest uppercase px-2 py-1 rounded border border-yellow-500/30">STAR</span>
                 </div>

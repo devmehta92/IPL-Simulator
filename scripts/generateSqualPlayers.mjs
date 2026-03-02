@@ -1,4 +1,4 @@
-const fs = require('fs');
+import fs from 'fs';
 
 const realPlayers = [
     { name: "Virat Kohli", role: "BAT", nat: "IND", category: "STAR" },
@@ -268,7 +268,6 @@ const realPlayers = [
 console.log("Total unique players generated:", realPlayers.length);
 
 function getRealisticPrice(category) {
-    let raw;
     if (category === 'STAR') {
         const slots = [17.0, 18.0, 19.5, 20.0, 22.0, 24.0, 25.5, 27.0];
         return slots[Math.floor(Math.random() * slots.length)].toFixed(2);

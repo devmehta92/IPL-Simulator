@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState, use } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useRouter } from 'next/navigation';
-import { MatchEngine, Cricketer, DiceRollResult } from '@/game/matchEngine';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Cricketer, DiceRollResult } from '@/game/matchEngine';
+import { TeamData, LogEntry } from '@/types';
 
 interface MatchState {
     innings: 1 | 2;
@@ -22,12 +23,11 @@ const defaultBowler: Cricketer = { id: 'bw1', name: 'Bench Bowler', role: 'BOWL'
 export default function SpectatorMatchPage({ params }: { params: Promise<{ matchId: string }> }) {
     const { matchId } = use(params);
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const myTeamId = searchParams.get('myTeamId');
 
-    const [matchData, setMatchData] = useState<any>(null);
-    const [teamA, setTeamA] = useState<any>(null);
-    const [teamB, setTeamB] = useState<any>(null);
-    const [teamARoster, setTeamARoster] = useState<any[]>([]);
-    const [teamBRoster, setTeamBRoster] = useState<any[]>([]);
+    const [teamA, setTeamA] = useState<TeamData | null>(null);
+    const [teamB, setTeamB] = useState<TeamData | null>(null);
 
     // Live Match State
     const [gameState, setGameState] = useState<MatchState>({
@@ -40,7 +40,7 @@ export default function SpectatorMatchPage({ params }: { params: Promise<{ match
         status: 'IN_PROGRESS',
         winner: null
     });
-    const [logs, setLogs] = useState<any[]>([]);
+    const [logs, setLogs] = useState<LogEntry[]>([]);
     const [lastRoll, setLastRoll] = useState<DiceRollResult | null>(null);
     const [activeBatter, setActiveBatter] = useState<Cricketer>(defaultBatter);
     const [activeBowler, setActiveBowler] = useState<Cricketer>(defaultBowler);
@@ -51,17 +51,10 @@ export default function SpectatorMatchPage({ params }: { params: Promise<{ match
         const fetchMatch = async () => {
             const { data: match } = await supabase.from('matches').select('*').eq('id', matchId).single();
             if (match) {
-                setMatchData(match);
                 const { data: ta } = await supabase.from('teams').select('*').eq('id', match.team_a_id).single();
                 const { data: tb } = await supabase.from('teams').select('*').eq('id', match.team_b_id).single();
                 setTeamA(ta);
                 setTeamB(tb);
-
-                // Fetch Rosters
-                const { data: rosterA } = await supabase.from('team_rosters').select('*, players(*)').eq('team_id', ta.id);
-                const { data: rosterB } = await supabase.from('team_rosters').select('*, players(*)').eq('team_id', tb.id);
-                setTeamARoster(rosterA || []);
-                setTeamBRoster(rosterB || []);
 
                 // Initialize Game State
                 if (match.status === 'SCHEDULED' || !match.result?.state) {
@@ -303,19 +296,36 @@ export default function SpectatorMatchPage({ params }: { params: Promise<{ match
                                 <>
                                     <h2 className="text-xl font-bold text-slate-300 uppercase tracking-widest mb-6">Match Engine</h2>
                                     <div className="w-full bg-black/40 border border-primary/30 rounded-2xl py-8 flex flex-col items-center justify-center gap-4 relative overflow-hidden">
-                                        <div className="absolute inset-0 bg-primary/5 animate-pulse"></div>
-                                        <span className="material-symbols-outlined text-primary text-5xl animate-bounce">sensors</span>
-                                        <div className="text-center relative z-10">
-                                            <span className="text-white font-bold text-lg block">Live Feed Connected</span>
-                                            <span className="text-primary font-bold uppercase tracking-widest text-xs">Waiting for Host to roll...</span>
-                                        </div>
+                                        {myTeamId === battingTeam.id ? (
+                                            <button
+                                                onClick={() => {
+                                                    supabase.channel(`match_${matchId}`).send({
+                                                        type: 'broadcast',
+                                                        event: 'CONDUCT_ROLL',
+                                                        payload: { teamId: myTeamId }
+                                                    });
+                                                }}
+                                                className="w-full bg-primary hover:bg-green-400 text-background-dark rounded-2xl text-4xl font-black tracking-widest shadow-[0_0_40px_rgba(43,238,121,0.3)] transition-all transform active:scale-95 py-8 border-b-4 border-green-600 hover:border-green-500 absolute inset-0 z-20 flex items-center justify-center cursor-pointer"
+                                            >
+                                                ROLL DICE
+                                            </button>
+                                        ) : (
+                                            <>
+                                                <div className="absolute inset-0 bg-primary/5 animate-pulse"></div>
+                                                <span className="material-symbols-outlined text-primary text-5xl animate-bounce">sensors</span>
+                                                <div className="text-center relative z-10">
+                                                    <span className="text-white font-bold text-lg block">Live Feed Connected</span>
+                                                    <span className="text-primary font-bold uppercase tracking-widest text-xs">Waiting for {battingTeam.name} to roll...</span>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 </>
                             ) : (
                                 <div className="flex w-full flex-col items-center justify-center text-center gap-6">
                                     <div className="text-5xl font-black text-primary drop-shadow-[0_0_20px_rgba(43,238,121,0.5)] tracking-tighter">MATCH OVER</div>
                                     <div className="text-2xl font-bold text-white p-6 bg-black/50 border border-white/10 rounded-2xl w-full shadow-inner">
-                                        {gameState.winner === 'TIE' ? <span className="text-yellow-400">IT'S A TIE!</span> :
+                                        {gameState.winner === 'TIE' ? <span className="text-yellow-400">IT&apos;S A TIE!</span> :
                                             <span className="text-green-400">{gameState.winner === teamA.id ? teamA.name : teamB.name} WINS!</span>}
                                     </div>
                                 </div>

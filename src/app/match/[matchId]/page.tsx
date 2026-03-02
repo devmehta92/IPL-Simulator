@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useEffect, useState, use } from 'react';
+import React, { useEffect, useState, use, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { MatchEngine, Cricketer, DiceRollResult } from '@/game/matchEngine';
+import { MatchEngine, Cricketer, DiceRollResult, PlayerCategory, PlayerRole } from '@/game/matchEngine';
+import { TeamData, RosterData, LogEntry } from '@/types';
 
 interface MatchState {
     innings: 1 | 2;
@@ -23,11 +24,10 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
     const { matchId } = use(params);
     const router = useRouter();
 
-    const [matchData, setMatchData] = useState<any>(null);
-    const [teamA, setTeamA] = useState<any>(null);
-    const [teamB, setTeamB] = useState<any>(null);
-    const [teamARoster, setTeamARoster] = useState<any[]>([]);
-    const [teamBRoster, setTeamBRoster] = useState<any[]>([]);
+    const [teamA, setTeamA] = useState<TeamData | null>(null);
+    const [teamB, setTeamB] = useState<TeamData | null>(null);
+    const [teamARoster, setTeamARoster] = useState<RosterData[]>([]);
+    const [teamBRoster, setTeamBRoster] = useState<RosterData[]>([]);
 
     // Live Match State
     const [gameState, setGameState] = useState<MatchState>({
@@ -40,7 +40,7 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
         status: 'IN_PROGRESS',
         winner: null
     });
-    const [logs, setLogs] = useState<any[]>([]);
+    const [logs, setLogs] = useState<LogEntry[]>([]);
     const [lastRoll, setLastRoll] = useState<DiceRollResult | null>(null);
     const [activeBatter, setActiveBatter] = useState<Cricketer>(defaultBatter);
     const [activeBowler, setActiveBowler] = useState<Cricketer>(defaultBowler);
@@ -51,15 +51,14 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
         const fetchMatch = async () => {
             const { data: match } = await supabase.from('matches').select('*').eq('id', matchId).single();
             if (match) {
-                setMatchData(match);
                 const { data: ta } = await supabase.from('teams').select('*').eq('id', match.team_a_id).single();
                 const { data: tb } = await supabase.from('teams').select('*').eq('id', match.team_b_id).single();
                 setTeamA(ta);
                 setTeamB(tb);
 
-                // Fetch Rosters
-                const { data: rosterA } = await supabase.from('team_rosters').select('*, players(*)').eq('team_id', ta.id);
-                const { data: rosterB } = await supabase.from('team_rosters').select('*, players(*)').eq('team_id', tb.id);
+                // Fetch Starting XIs only
+                const { data: rosterA } = await supabase.from('team_rosters').select('*, players(*)').eq('team_id', ta.id).eq('is_starting', true);
+                const { data: rosterB } = await supabase.from('team_rosters').select('*, players(*)').eq('team_id', tb.id).eq('is_starting', true);
                 setTeamARoster(rosterA || []);
                 setTeamBRoster(rosterB || []);
 
@@ -81,7 +80,7 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
         fetchMatch();
     }, [matchId]);
 
-    const playBall = () => {
+    const playBall = useCallback(() => {
         if (gameState.status === 'FINISHED') return;
 
         // Context derived from state closure
@@ -99,8 +98,8 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
         const batterData = battingRoster[currentBallIndex]?.players;
         const bowlerData = bowlingRoster[currentBallIndex]?.players;
 
-        const engineBatter: Cricketer = { ...defaultBatter, ...batterData, category: batterData?.category || 'CONSISTENT' };
-        const engineBowler: Cricketer = { ...defaultBowler, ...bowlerData, category: bowlerData?.category || 'CONSISTENT' };
+        const engineBatter: Cricketer = { ...defaultBatter, ...batterData, category: (batterData?.category || 'CONSISTENT') as PlayerCategory, role: (batterData?.role || 'BAT') as PlayerRole };
+        const engineBowler: Cricketer = { ...defaultBowler, ...bowlerData, category: (bowlerData?.category || 'CONSISTENT') as PlayerCategory, role: (bowlerData?.role || 'BOWL') as PlayerRole };
 
         // 1. Calculate side-effect once outside of the state setter
         const engine = new MatchEngine();
@@ -143,6 +142,7 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
             };
 
             const isEndOfInnings = currentScoreObj.balls >= MAX_BALLS;
+            if (!teamA || !teamB) return nextState;
 
             if (isFirstInningsPrev && isEndOfInnings) {
                 // Transition to Innings 2
@@ -156,8 +156,8 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
                     setLogs(l => [{ isBreak: true, msg: `Innings Break! Target is ${nextState.target}` }, ...l].slice(0, 15));
                     const nextBat = teamBRoster[0]?.players;
                     const nextBowl = teamARoster[0]?.players;
-                    if (nextBat) setActiveBatter({ ...defaultBatter, ...nextBat, category: nextBat.category || 'CONSISTENT' });
-                    if (nextBowl) setActiveBowler({ ...defaultBowler, ...nextBowl, category: nextBowl.category || 'CONSISTENT' });
+                    if (nextBat) setActiveBatter({ ...defaultBatter, ...nextBat, category: (nextBat.category || 'CONSISTENT') as PlayerCategory, role: (nextBat.role || 'BAT') as PlayerRole });
+                    if (nextBowl) setActiveBowler({ ...defaultBowler, ...nextBowl, category: (nextBowl.category || 'CONSISTENT') as PlayerCategory, role: (nextBowl.role || 'BOWL') as PlayerRole });
                     setLastRoll(null);
                 }, 0);
 
@@ -211,7 +211,19 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
 
             return nextState;
         });
-    };
+    }, [gameState.status, gameState.innings, gameState.team1Score, gameState.team2Score, teamARoster, teamBRoster, matchId, teamA, teamB]);
+
+    // WebSocket Listener for Remote Player Rolls
+    useEffect(() => {
+        const channel = supabase.channel(`match_${matchId}`);
+        channel.on('broadcast', { event: 'CONDUCT_ROLL' }, () => {
+            playBall();
+        }).subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [matchId, playBall]);
 
     if (!teamA || !teamB) return <div className="min-h-screen bg-[#0a1410] flex items-center justify-center text-primary">Loading Match...</div>;
 
@@ -390,18 +402,26 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
                             {gameState.status === 'IN_PROGRESS' ? (
                                 <>
                                     <h2 className="text-xl font-bold text-slate-300 uppercase tracking-widest mb-6">Match Engine</h2>
-                                    <button
-                                        onClick={playBall}
-                                        className="w-full bg-primary hover:bg-green-400 text-background-dark rounded-2xl text-4xl font-black tracking-widest shadow-[0_0_40px_rgba(43,238,121,0.3)] transition-all transform active:scale-95 py-8 border-b-4 border-green-600 hover:border-green-500"
-                                    >
-                                        PLAY BALL
-                                    </button>
+                                    <div className="w-full bg-surface-dark border-2 border-dashed border-primary/50 text-white rounded-2xl flex flex-col items-center justify-center py-6 shadow-inner relative overflow-hidden group">
+                                        <div className="absolute inset-0 bg-primary/5 animate-pulse"></div>
+                                        <span className="material-symbols-outlined text-4xl text-primary mb-2 animate-bounce">tap_and_play</span>
+                                        <span className="text-sm font-bold tracking-widest uppercase text-slate-400">Waiting For</span>
+                                        <span className="text-2xl font-black text-white">{battingTeam.name}</span>
+                                        <span className="text-xs text-primary mt-2 mb-4">To roll from their device...</span>
+                                        <button
+                                            onClick={playBall}
+                                            className="relative z-10 mt-2 text-xs uppercase font-bold tracking-widest bg-slate-800 hover:bg-red-900/40 hover:border-red-500/50 text-slate-400 hover:text-red-400 px-4 py-2 rounded-full border border-slate-600 transition-colors flex items-center gap-2 group-hover:opacity-100"
+                                        >
+                                            <span className="material-symbols-outlined text-sm">fast_forward</span>
+                                            Force Roll (Override)
+                                        </button>
+                                    </div>
                                 </>
                             ) : (
                                 <div className="flex w-full flex-col items-center justify-center text-center gap-6">
                                     <div className="text-5xl font-black text-primary drop-shadow-[0_0_20px_rgba(43,238,121,0.5)] tracking-tighter">MATCH OVER</div>
                                     <div className="text-2xl font-bold text-white p-6 bg-black/50 border border-white/10 rounded-2xl w-full shadow-inner">
-                                        {gameState.winner === 'TIE' ? <span className="text-yellow-400">IT'S A TIE!</span> :
+                                        {gameState.winner === 'TIE' ? <span className="text-yellow-400">IT&apos;S A TIE!</span> :
                                             <span className="text-green-400">{gameState.winner === teamA.id ? teamA.name : teamB.name} WINS!</span>}
                                     </div>
                                 </div>

@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import usePartySocket from 'partysocket/react';
 
 type AuctionState = {
     status: 'WAITING' | 'ACTIVE' | 'SOLD' | 'UNSOLD';

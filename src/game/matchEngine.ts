@@ -62,15 +62,15 @@ export class MatchEngine {
         const batMultiplier = this.getCategoryMultiplier(batter.category, batRoll);
         const bowlMultiplier = this.getCategoryMultiplier(bowler.category, bowlRoll);
 
-        let batScore = batRoll * batMultiplier;
-        let bowlScore = bowlRoll * bowlMultiplier;
+        const batScore = batRoll * batMultiplier;
+        const bowlScore = bowlRoll * bowlMultiplier;
 
         // 3. Volatility Check (Rolling a 6)
         const isVolatile = batRoll === 6 || bowlRoll === 6;
 
         // 4. Net Result Calculation: Straight Accumulator
-        let netResult = batScore - bowlScore;
-        let eventDescription = `${batter.name} (${batRoll}x${batMultiplier}=${batScore}) vs ${bowler.name} (${bowlRoll}x${bowlMultiplier}=${bowlScore})`;
+        const netResult = batScore - bowlScore;
+        const eventDescription = `${batter.name} (${batRoll}x${batMultiplier}=${batScore}) vs ${bowler.name} (${bowlRoll}x${bowlMultiplier}=${bowlScore})`;
 
         return {
             battingRoll: batRoll,

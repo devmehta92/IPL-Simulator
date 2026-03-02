@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { TeamData } from '@/types';
 
 // Standard IPL Franchise setup
 const PREDEFINED_TEAMS = [
@@ -41,14 +42,14 @@ export default function Home() {
     setPlayers(players.filter((_, i) => i !== index));
   };
 
-  const updatePlayer = (index: number, field: string, value: any) => {
+  const updatePlayer = (index: number, field: string, value: string | number) => {
     const newPlayers = [...players];
     newPlayers[index] = { ...newPlayers[index], [field]: value };
     setPlayers(newPlayers);
   };
 
   const [isJoinMode, setIsJoinMode] = useState(false);
-  const [activeTeams, setActiveTeams] = useState<any[]>([]);
+  const [activeTeams, setActiveTeams] = useState<TeamData[]>([]);
 
   const handleCreateLeague = async () => {
     // ... (existing create logic)
@@ -92,9 +93,10 @@ export default function Home() {
       if (teamsError) throw teamsError;
 
       router.push(`/auction/${sessionId}?host=${encodeURIComponent(hostName)}`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error creating league:", err);
-      alert("Failed to create the league. Check console for details.");
+      if (err instanceof Error) alert("Failed to create the league. Check console for details. " + err.message);
+      else alert("Failed to create the league. Check console for details.");
       setIsLoading(false);
     }
   };
