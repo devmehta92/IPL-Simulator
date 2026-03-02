@@ -175,7 +175,7 @@ export default function TeamDashboardPage({ params }: { params: Promise<{ teamId
                 {/* Header Stats */}
                 <div className="flex items-center gap-4">
                     {sessionStatus === 'MATCHES' && liveMatchId && (
-                        <button onClick={() => router.push(`/spectator/${liveMatchId}`)} className="bg-red-500 hover:bg-red-400 text-white font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2 animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]">
+                        <button onClick={() => router.push(`/spectator/${liveMatchId}?myTeamId=${teamId}`)} className="bg-red-500 hover:bg-red-400 text-white font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2 animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]">
                             <span className="material-symbols-outlined">live_tv</span> Watch Live
                         </button>
                     )}
@@ -242,7 +242,7 @@ export default function TeamDashboardPage({ params }: { params: Promise<{ teamId
                             {liveMatchId ? (
                                 <div className="flex flex-col gap-4 w-full max-w-2xl mx-auto">
                                     <button
-                                        onClick={() => router.push(`/spectator/${liveMatchId}`)}
+                                        onClick={() => router.push(`/spectator/${liveMatchId}?myTeamId=${teamId}`)}
                                         className="w-full flex items-center justify-center gap-3 h-16 bg-red-600 hover:bg-red-500 text-white font-black tracking-widest text-xl rounded-xl transition-all shadow-[0_0_20px_rgba(239,68,68,0.4)] active:scale-95 group animate-pulse"
                                     >
                                         <span className="material-symbols-outlined text-3xl group-hover:scale-110 transition-transform">sports_esports</span>
