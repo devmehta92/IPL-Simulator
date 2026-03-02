@@ -154,7 +154,7 @@ export default function TeamDashboardPage({ params }: { params: Promise<{ teamId
     const weakCount = roster.filter(r => r.players.category === 'WEAK').length;
 
     return (
-        <div className="bg-[#0a1410] text-slate-100 font-display min-h-screen flex flex-col overflow-hidden">
+        <div className="bg-[#0a1410] text-slate-100 font-display min-h-screen flex flex-col md:overflow-hidden">
             {/* Header Section */}
             <header className="flex items-center justify-between border-b border-white/10 px-6 py-4 bg-surface-dark/95 backdrop-blur-md z-10 w-full">
                 <div className="flex items-center gap-4">
@@ -197,9 +197,9 @@ export default function TeamDashboardPage({ params }: { params: Promise<{ teamId
             </header>
 
             {/* Main Content Grid */}
-            <main className="flex-1 flex flex-col md:flex-row h-full overflow-hidden">
+            <main className="flex-1 flex flex-col md:flex-row md:h-full md:overflow-hidden">
                 {/* Sidebar / Stats Panel */}
-                <aside className="w-full md:w-80 border-r border-white/10 bg-surface-dark flex flex-col p-6 gap-6 overflow-y-auto z-0 custom-scrollbar shrink-0">
+                <aside className="w-full md:w-80 border-b md:border-b-0 md:border-r border-white/10 bg-surface-dark flex flex-col p-6 gap-6 md:overflow-y-auto z-0 custom-scrollbar shrink-0">
                     <div className="space-y-4">
                         <h3 className="text-white text-lg font-bold flex items-center gap-2">
                             <span className="material-symbols-outlined text-primary">analytics</span>
