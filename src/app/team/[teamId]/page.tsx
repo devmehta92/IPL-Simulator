@@ -229,6 +229,43 @@ export default function TeamDashboardPage({ params }: { params: Promise<{ teamId
 
                 {/* Player Grid Area & Auction Block */}
                 <section className="flex-1 flex flex-col h-full overflow-y-auto relative custom-scrollbar">
+                    {/* LIVE MATCH ENTRY TICKET */}
+                    {sessionStatus === 'MATCHES' && (
+                        <div className="bg-[#1c2e24] w-full p-6 border-b border-primary/20 shrink-0 sticky top-0 z-20 shadow-xl">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-primary font-bold uppercase tracking-widest text-xs flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-primary animate-pulse shadow-[0_0_10px_rgba(43,238,121,0.5)]"></span>
+                                    Tournament Phase
+                                </h3>
+                            </div>
+
+                            {liveMatchId ? (
+                                <div className="flex flex-col gap-4 w-full max-w-2xl mx-auto">
+                                    <button
+                                        onClick={() => router.push(`/spectator/${liveMatchId}`)}
+                                        className="w-full flex items-center justify-center gap-3 h-16 bg-red-600 hover:bg-red-500 text-white font-black tracking-widest text-xl rounded-xl transition-all shadow-[0_0_20px_rgba(239,68,68,0.4)] active:scale-95 group animate-pulse"
+                                    >
+                                        <span className="material-symbols-outlined text-3xl group-hover:scale-110 transition-transform">sports_esports</span>
+                                        JOIN LIVE MATCH
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-4 w-full max-w-2xl mx-auto">
+                                    <button
+                                        onClick={() => router.push(`/team/${teamId}/lineup`)}
+                                        className="w-full flex items-center justify-center gap-3 h-14 bg-surface-dark border border-slate-700 hover:border-primary text-white hover:text-primary font-bold text-lg rounded-xl transition-all shadow-lg active:scale-95 group"
+                                    >
+                                        <span className="material-symbols-outlined text-3xl group-hover:rotate-12 transition-transform">checklist</span>
+                                        Adjust Starting XI
+                                    </button>
+                                    <div className="bg-black/40 border border-white/5 rounded-xl p-8 text-center flex flex-col items-center gap-3 shadow-inner">
+                                        <span className="material-symbols-outlined text-slate-500 text-4xl">hourglass_bottom</span>
+                                        <span className="text-slate-400 font-bold uppercase tracking-widest text-sm">Squad Locked. Waiting for Host to start match...</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* LIVE AUCTION TICKET */}
                     {sessionStatus !== 'MATCHES' && (
