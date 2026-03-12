@@ -105,14 +105,20 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ sessionI
         syncForm();
     }, [state.status, state.currentPlayerId, unsoldPlayers]);
 
-    const handleDrawNextPlayer = () => {
-        if (unsoldPlayers.length === 0) {
-            alert("No players left in the draft pool!");
+    const handleDrawNextPlayer = (category?: string) => {
+        let pool = unsoldPlayers;
+        if (category) {
+            pool = unsoldPlayers.filter(p => p.category === category);
+        }
+
+        if (pool.length === 0) {
+            alert(`No ${category ? category : ''} players left in the draft pool!`);
             return;
         }
+
         // Randomly pick an unsold player
-        const randIndex = Math.floor(Math.random() * unsoldPlayers.length);
-        const p = unsoldPlayers[randIndex];
+        const randIndex = Math.floor(Math.random() * pool.length);
+        const p = pool[randIndex];
 
         setFinalPrice(p.base_price.toString());
         setSelectedTeamId('');
@@ -199,6 +205,12 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ sessionI
         }, 1500);
     };
 
+    // Derived counts for Host UI
+    const starCount = unsoldPlayers.filter(p => p.category === 'STAR').length;
+    const consistentCount = unsoldPlayers.filter(p => p.category === 'CONSISTENT').length;
+    const volatileCount = unsoldPlayers.filter(p => p.category === 'VOLATILE').length;
+    const weakCount = unsoldPlayers.filter(p => p.category === 'WEAK').length;
+
     return (
         <div className="bg-[#0a1410] text-slate-100 min-h-screen flex flex-col overflow-hidden font-display">
             {/* Header */}
@@ -263,14 +275,50 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ sessionI
                     <div className="flex-1 bg-surface-dark border border-white/10 rounded-2xl p-6 flex flex-col shadow-2xl overflow-hidden relative">
                         {state.status === 'WAITING' || !activePlayer ? (
                             <div className="flex flex-col items-center justify-center h-full gap-6">
-                                <span className="material-symbols-outlined text-6xl text-slate-700">hourglass_empty</span>
-                                <p className="text-slate-400 text-center font-medium">No player on the block.</p>
+                                <span className="material-symbols-outlined text-6xl text-slate-700 mb-2">hourglass_empty</span>
+                                <p className="text-slate-400 text-center font-bold tracking-widest uppercase text-xs mb-2">No player on the block.</p>
+
+                                <div className="grid grid-cols-2 gap-3 w-full">
+                                    <button
+                                        onClick={() => handleDrawNextPlayer('STAR')}
+                                        disabled={starCount === 0}
+                                        className="h-14 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 border border-yellow-500/30 font-bold text-sm rounded-xl transition-all shadow-lg flex flex-col justify-center items-center disabled:opacity-30 disabled:cursor-not-allowed"
+                                    >
+                                        <span className="leading-none">STAR</span>
+                                        <span className="text-[10px] text-yellow-400/70">{starCount} Left</span>
+                                    </button>
+                                    <button
+                                        onClick={() => handleDrawNextPlayer('CONSISTENT')}
+                                        disabled={consistentCount === 0}
+                                        className="h-14 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 border border-blue-500/30 font-bold text-sm rounded-xl transition-all shadow-lg flex flex-col justify-center items-center disabled:opacity-30 disabled:cursor-not-allowed"
+                                    >
+                                        <span className="leading-none">CONSISTENT</span>
+                                        <span className="text-[10px] text-blue-400/70">{consistentCount} Left</span>
+                                    </button>
+                                    <button
+                                        onClick={() => handleDrawNextPlayer('VOLATILE')}
+                                        disabled={volatileCount === 0}
+                                        className="h-14 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30 font-bold text-sm rounded-xl transition-all shadow-lg flex flex-col justify-center items-center disabled:opacity-30 disabled:cursor-not-allowed"
+                                    >
+                                        <span className="leading-none">VOLATILE</span>
+                                        <span className="text-[10px] text-purple-400/70">{volatileCount} Left</span>
+                                    </button>
+                                    <button
+                                        onClick={() => handleDrawNextPlayer('WEAK')}
+                                        disabled={weakCount === 0}
+                                        className="h-14 bg-slate-700 focus:bg-slate-600 hover:bg-slate-600 text-slate-300 border border-slate-600 font-bold text-sm rounded-xl transition-all shadow-lg flex flex-col justify-center items-center disabled:opacity-30 disabled:cursor-not-allowed"
+                                    >
+                                        <span className="leading-none">WEAK</span>
+                                        <span className="text-[10px] text-slate-400">{weakCount} Left</span>
+                                    </button>
+                                </div>
                                 <button
-                                    onClick={handleDrawNextPlayer}
-                                    className="w-full h-16 bg-primary hover:bg-emerald-400 text-background-dark font-black text-xl rounded-xl transition-all shadow-lg shadow-primary/20 flex justify-center items-center gap-2"
+                                    onClick={() => handleDrawNextPlayer()}
+                                    disabled={unsoldPlayers.length === 0}
+                                    className="w-full mt-2 h-14 bg-primary/20 focus:bg-primary/30 hover:bg-primary/30 text-primary border border-primary/30 font-black text-sm uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-primary/10 flex justify-center items-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
                                 >
-                                    <span className="material-symbols-outlined">shuffle</span>
-                                    Draw Next Player
+                                    <span className="material-symbols-outlined text-xl border-none">shuffle</span>
+                                    Draw Any Random
                                 </button>
                             </div>
                         ) : (
