@@ -20,11 +20,8 @@ export interface MatchState {
     bowlingTeamId: string;
     bowlingTactic?: BowlingTactic;
     innings: 1 | 2;
-    score: {
-        runs: number;
-        wickets: number;
-        ballsbobled: number;
-    };
+    team1Score: { runs: number, wickets: number, balls: number };
+    team2Score: { runs: number, wickets: number, balls: number };
     target: number | null;
     strikerId: string | null;
     nonStrikerId: string | null;
@@ -40,7 +37,8 @@ export interface DiceRollResult {
     bowlMultiplier: number;
     batScore: number;
     bowlScore: number;
-    netResult: number; // positive = runs, negative = wicket risk or dots
+    runs: number;
+    isWicket: boolean;
     isVolatile: boolean;
     eventDescription: string;
 }
@@ -87,10 +85,22 @@ export class MatchEngine {
         // 5. Volatility Check (Rolling a 6)
         const isVolatile = batRoll === 6 || bowlRoll === 6;
 
-        // 6. Net Result Calculation: Straight Accumulator
-        const netResult = batScore - bowlScore;
+        // 6. Net Result Calculation: Wicket Logic
+        // If Batter Wins: Runs = diff
+        // If Tie: 0 runs
+        // If Bowler Wins: Wicket, 0 runs
+        let runs = 0;
+        let isWicket = false;
+
+        if (batScore > bowlScore) {
+            runs = batScore - bowlScore;
+        } else if (bowlScore > batScore) {
+            isWicket = true;
+        }
+
         const tacticLabel = tactic !== 'BALANCED' ? ` [${tactic}]` : '';
-        const eventDescription = `${batter.name} (${batRoll}x${batMultiplier}+${batStatBonus}${tacticBonusBat ? '+'+tacticBonusBat : ''}) vs ${bowler.name}${tacticLabel} (${bowlRoll}x${bowlMultiplier}+${bowlStatBonus}+${tacticBonusBowl}=${bowlScore})`;
+        const outcomeLabel = isWicket ? 'OUT!' : runs > 0 ? `${runs} Runs` : 'Dot Ball';
+        const eventDescription = `${batter.name} vs ${bowler.name}${tacticLabel}: ${outcomeLabel} (${batScore} vs ${bowlScore})`;
 
         return {
             battingRoll: batRoll,
@@ -99,7 +109,8 @@ export class MatchEngine {
             bowlMultiplier,
             batScore,
             bowlScore,
-            netResult,
+            runs,
+            isWicket,
             isVolatile,
             eventDescription
         };

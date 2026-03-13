@@ -169,18 +169,39 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ sessionI
         }
 
         try {
-            // 1. Insert into team rosters
-            await supabase.from('team_rosters').insert({
-                team_id: selectedTeamId,
-                player_id: activePlayer.id,
-                bought_for: parsedPrice
-            });
+            // 1. Double check purse one last time before starting
+            if (winningTeam.purse < parsedPrice) {
+                alert("Insufficient purse!");
+                setIsProcessing(false);
+                return;
+            }
 
-            // 2. Deduct purse
-            const newPurse = (winningTeam.purse - parsedPrice).toFixed(2);
-            await supabase.from('teams').update({ purse: newPurse }).eq('id', selectedTeamId);
+            // 2. Perform DB Updates sequentially (Simulated transaction)
+            // First, deduct the purse
+            const newPurse = Number((winningTeam.purse - parsedPrice).toFixed(2));
+            const { error: purseError } = await supabase
+                .from('teams')
+                .update({ purse: newPurse })
+                .eq('id', selectedTeamId);
 
-            // 3. Notify Room to end active block
+            if (purseError) throw new Error("Failed to update purse");
+
+            // Second, insert into roster
+            const { error: rosterError } = await supabase
+                .from('team_rosters')
+                .insert({
+                    team_id: selectedTeamId,
+                    player_id: activePlayer.id,
+                    bought_for: parsedPrice
+                });
+
+            if (rosterError) {
+                // Rollback purse if roster fails
+                await supabase.from('teams').update({ purse: winningTeam.purse }).eq('id', selectedTeamId);
+                throw new Error("Failed to update roster");
+            }
+
+            // 3. ONLY after DB is successful, notify the room via WebSockets
             socket.send(JSON.stringify({
                 type: 'ALLOCATE_PLAYER',
                 playerId: activePlayer.id,
@@ -188,17 +209,20 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ sessionI
                 amount: parsedPrice
             }));
 
-            // Refresh local team data to update UI instantly
+            // 4. Refresh local team data to update UI
             await fetchGameData();
+
+            // 5. Visual delay for the "SOLD" animation before resetting
             setTimeout(() => {
-                socket.send(JSON.stringify({ type: 'SHOW_PLAYER', playerId: null, basePrice: 0 })); // Reset board to wait for next draw
+                socket.send(JSON.stringify({ type: 'SHOW_PLAYER', playerId: null, basePrice: 0 }));
             }, 3000);
 
-        } catch (error) {
-            console.error("Error allocating player:", error);
-            alert("Database Error!");
+        } catch (error: any) {
+            console.error("Critical Allocation Error:", error);
+            alert(`Allocation Failed: ${error.message || 'Unknown Error'}. The player is still active.`);
+        } finally {
+            setIsProcessing(false);
         }
-        setIsProcessing(false);
     };
 
     const handlePass = async () => {

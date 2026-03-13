@@ -11,15 +11,15 @@ interface MatchState {
     battingTeamId: string;
     bowlingTeamId: string;
     bowlingTactic?: BowlingTactic;
-    team1Score: { runs: number, balls: number };
-    team2Score: { runs: number, balls: number };
+    team1Score: { runs: number, wickets: number, balls: number };
+    team2Score: { runs: number, wickets: number, balls: number };
     target: number | null;
     status: 'IN_PROGRESS' | 'FINISHED';
     winner: string | null;
 }
 
-const defaultBatter: Cricketer = { id: 'b1', name: 'Bench Batter', role: 'BAT', category: 'CONSISTENT', basePower: 6, batting_stat: 0, bowling_stat: 0, modifiers: {}, traits: [] };
-const defaultBowler: Cricketer = { id: 'bw1', name: 'Bench Bowler', role: 'BOWL', category: 'CONSISTENT', basePower: 6, batting_stat: 0, bowling_stat: 0, modifiers: {}, traits: [] };
+const defaultBatter: Cricketer = { id: 'b1', name: 'Bench Batter', role: 'BAT', category: 'CONSISTENT', basePower: 6, batting_stat: 5, bowling_stat: 2, modifiers: {}, traits: [] };
+const defaultBowler: Cricketer = { id: 'bw1', name: 'Bench Bowler', role: 'BOWL', category: 'CONSISTENT', basePower: 6, batting_stat: 2, bowling_stat: 5, modifiers: {}, traits: [] };
 
 export default function SpectatorMatchPage({ params }: { params: Promise<{ matchId: string }> }) {
     const { matchId } = use(params);
@@ -35,8 +35,8 @@ export default function SpectatorMatchPage({ params }: { params: Promise<{ match
         innings: 1,
         battingTeamId: '',
         bowlingTeamId: '',
-        team1Score: { runs: 0, balls: 0 },
-        team2Score: { runs: 0, balls: 0 },
+        team1Score: { runs: 0, wickets: 0, balls: 0 },
+        team2Score: { runs: 0, wickets: 0, balls: 0 },
         target: null,
         status: 'IN_PROGRESS',
         winner: null
@@ -79,8 +79,8 @@ export default function SpectatorMatchPage({ params }: { params: Promise<{ match
                         ...prev,
                         battingTeamId: ta.id,
                         bowlingTeamId: tb.id,
-                        team1Score: { runs: 0, balls: 0 },
-                        team2Score: { runs: 0, balls: 0 },
+                        team1Score: { runs: 0, wickets: 0, balls: 0 },
+                        team2Score: { runs: 0, wickets: 0, balls: 0 },
                     }));
                 } else if (match.status === 'FINISHED') {
                     setGameState(match.result.state);
@@ -190,7 +190,7 @@ export default function SpectatorMatchPage({ params }: { params: Promise<{ match
                         </div>
                         <div className="text-right relative z-10">
                             <div className="text-5xl font-black text-white tracking-tighter drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
-                                {currentScore.runs}
+                                {currentScore.runs}<span className="text-3xl text-slate-500 mx-1">/</span><span className="text-red-500">{currentScore.wickets}</span>
                             </div>
                             <div className="text-slate-400 text-xs font-bold mt-1 uppercase tracking-widest">Total Score</div>
                         </div>

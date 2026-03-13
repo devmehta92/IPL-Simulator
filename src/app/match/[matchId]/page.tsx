@@ -11,15 +11,15 @@ interface MatchState {
     battingTeamId: string;
     bowlingTeamId: string;
     bowlingTactic?: BowlingTactic;
-    team1Score: { runs: number, balls: number };
-    team2Score: { runs: number, balls: number };
+    team1Score: { runs: number, wickets: number, balls: number };
+    team2Score: { runs: number, wickets: number, balls: number };
     target: number | null;
     status: 'IN_PROGRESS' | 'FINISHED';
     winner: string | null;
 }
 
-const defaultBatter: Cricketer = { id: 'b1', name: 'Bench Batter', role: 'BAT', category: 'CONSISTENT', basePower: 6, batting_stat: 0, bowling_stat: 0, modifiers: {}, traits: [] };
-const defaultBowler: Cricketer = { id: 'bw1', name: 'Bench Bowler', role: 'BOWL', category: 'CONSISTENT', basePower: 6, batting_stat: 0, bowling_stat: 0, modifiers: {}, traits: [] };
+const defaultBatter: Cricketer = { id: 'b1', name: 'Bench Batter', role: 'BAT', category: 'CONSISTENT', basePower: 6, batting_stat: 5, bowling_stat: 2, modifiers: {}, traits: [] };
+const defaultBowler: Cricketer = { id: 'bw1', name: 'Bench Bowler', role: 'BOWL', category: 'CONSISTENT', basePower: 6, batting_stat: 2, bowling_stat: 5, modifiers: {}, traits: [] };
 
 export default function MatchScoreboardPage({ params }: { params: Promise<{ matchId: string }> }) {
     const { matchId } = use(params);
@@ -35,8 +35,8 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
         innings: 1,
         battingTeamId: '',
         bowlingTeamId: '',
-        team1Score: { runs: 0, balls: 0 },
-        team2Score: { runs: 0, balls: 0 },
+        team1Score: { runs: 0, wickets: 0, balls: 0 },
+        team2Score: { runs: 0, wickets: 0, balls: 0 },
         target: null,
         status: 'IN_PROGRESS',
         winner: null
@@ -70,8 +70,8 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
                         ...prev,
                         battingTeamId: ta.id,
                         bowlingTeamId: tb.id,
-                        team1Score: { runs: 0, balls: 0 },
-                        team2Score: { runs: 0, balls: 0 },
+                        team1Score: { runs: 0, wickets: 0, balls: 0 },
+                        team2Score: { runs: 0, wickets: 0, balls: 0 },
                     }));
                 } else if (match.status === 'FINISHED') {
                     setGameState(match.result.state);
@@ -144,7 +144,8 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
             if (currentScoreObj.balls >= MAX_BALLS) return prev; // Idempotent check
 
             // Apply specific immutable action
-            currentScoreObj.runs += resultDetails.netResult;
+            currentScoreObj.runs += resultDetails.runs;
+            if (resultDetails.isWicket) currentScoreObj.wickets += 1;
             currentScoreObj.balls += 1;
 
             const nextState = {
@@ -168,25 +169,49 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
                     setLogs(l => [{ isBreak: true, msg: `Innings Break! Target is ${nextState.target}` }, ...l].slice(0, 15));
                     const nextBat = teamBRoster[0]?.players;
                     const nextBowl = teamARoster[0]?.players;
-                    if (nextBat) setActiveBatter({ ...defaultBatter, ...nextBat, category: (nextBat.category || 'CONSISTENT') as PlayerCategory, role: (nextBat.role || 'BAT') as PlayerRole });
-                    if (nextBowl) setActiveBowler({ ...defaultBowler, ...nextBowl, category: (nextBowl.category || 'CONSISTENT') as PlayerCategory, role: (nextBowl.role || 'BOWL') as PlayerRole });
+                    if (nextBat) setActiveBatter({ ...defaultBatter, ...nextBat, category: (nextBat.category || 'CONSISTENT') as PlayerCategory, role: (nextBat.role || 'BAT') as PlayerRole, batting_stat: nextBat.batting_stat || 5, bowling_stat: nextBat.bowling_stat || 2 } as Cricketer);
+                    if (nextBowl) setActiveBowler({ ...defaultBowler, ...nextBowl, category: (nextBowl.category || 'CONSISTENT') as PlayerCategory, role: (nextBowl.role || 'BOWL') as PlayerRole, batting_stat: nextBowl.batting_stat || 2, bowling_stat: nextBowl.bowling_stat || 5 } as Cricketer);
                     setLastRoll(null);
                 }, 0);
 
-            } else if (!isFirstInningsPrev && isEndOfInnings) {
+            } else if (!isFirstInningsPrev && (isEndOfInnings || nextState.team2Score.runs >= nextState.target!)) {
                 // Match Over
                 nextState.status = 'FINISHED';
 
                 let winMsg = '';
-                if (currentScoreObj.runs >= nextState.target!) {
-                    nextState.winner = nextState.battingTeamId;
-                    winMsg = `MATCH OVER! Chasing team wins!`;
-                } else if (currentScoreObj.runs === nextState.target! - 1) {
-                    nextState.winner = 'TIE';
-                    winMsg = `MATCH OVER! It's a TIE!`;
+                const t1 = nextState.team1Score;
+                const t2 = nextState.team2Score;
+
+                if (t2.runs >= nextState.target!) {
+                    nextState.winner = teamB.id;
+                    winMsg = `MATCH OVER! ${teamB.name} wins!`;
+                } else if (t2.runs < t1.runs) {
+                    nextState.winner = teamA.id;
+                    winMsg = `MATCH OVER! ${teamA.name} wins!`;
                 } else {
-                    nextState.winner = nextState.bowlingTeamId;
-                    winMsg = `MATCH OVER! Defending team wins!`;
+                    // It's a tie on runs! Use Wickets as tie breaker (fewer is better)
+                    if (t2.wickets < t1.wickets) {
+                        nextState.winner = teamB.id;
+                        winMsg = `MATCH OVER! ${teamB.name} wins on Wickets!`;
+                    } else if (t1.wickets < t2.wickets) {
+                        nextState.winner = teamA.id;
+                        winMsg = `MATCH OVER! ${teamA.name} wins on Wickets!`;
+                    } else {
+                        // Still a tie! Use Total Power as final tie breaker
+                        const powerA = teamARoster.reduce((sum, r) => sum + (r.players.base_power || 6), 0);
+                        const powerB = teamBRoster.reduce((sum, r) => sum + (r.players.base_power || 6), 0);
+                        
+                        if (powerA > powerB) {
+                            nextState.winner = teamA.id;
+                            winMsg = `MATCH OVER! ${teamA.name} wins on Total Power!`;
+                        } else if (powerB > powerA) {
+                            nextState.winner = teamB.id;
+                            winMsg = `MATCH OVER! ${teamB.name} wins on Total Power!`;
+                        } else {
+                            nextState.winner = 'TIE';
+                            winMsg = `MATCH OVER! Absolute TIE!`;
+                        }
+                    }
                 }
 
                 setTimeout(() => {
@@ -194,11 +219,14 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
                 }, 0);
 
                 const finalResult = {
-                    teamA_runs: nextState.team1Score.runs,
-                    teamA_overs: nextState.team1Score.balls,
-                    teamB_runs: nextState.team2Score.runs,
-                    teamB_overs: nextState.team2Score.balls,
+                    teamA_runs: t1.runs,
+                    teamA_wickets: t1.wickets,
+                    teamA_overs: t1.balls,
+                    teamB_runs: t2.runs,
+                    teamB_wickets: t2.wickets,
+                    teamB_overs: t2.balls,
                     is_tie: nextState.winner === 'TIE',
+                    winner_id: nextState.winner,
                     state: nextState
                 };
 
@@ -293,7 +321,7 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
                         </div>
                         <div className="text-right relative z-10">
                             <div className="text-5xl font-black text-white tracking-tighter drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
-                                {currentScore.runs}
+                                {currentScore.runs}<span className="text-3xl text-slate-500 mx-1">/</span><span className="text-red-500">{currentScore.wickets}</span>
                             </div>
                             <div className="text-slate-400 text-xs font-bold mt-1 uppercase tracking-widest">Total Score</div>
                         </div>
