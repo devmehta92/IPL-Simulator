@@ -3,13 +3,14 @@
 import React, { useEffect, useState, use, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { MatchEngine, Cricketer, DiceRollResult, PlayerCategory, PlayerRole } from '@/game/matchEngine';
+import { MatchEngine, Cricketer, DiceRollResult, PlayerCategory, PlayerRole, BowlingTactic } from '@/game/matchEngine';
 import { TeamData, RosterData, LogEntry } from '@/types';
 
 interface MatchState {
     innings: 1 | 2;
     battingTeamId: string;
     bowlingTeamId: string;
+    bowlingTactic?: BowlingTactic;
     team1Score: { runs: number, balls: number };
     team2Score: { runs: number, balls: number };
     target: number | null;
@@ -17,8 +18,8 @@ interface MatchState {
     winner: string | null;
 }
 
-const defaultBatter: Cricketer = { id: 'b1', name: 'Bench Batter', role: 'BAT', category: 'CONSISTENT', basePower: 6, modifiers: {}, traits: [] };
-const defaultBowler: Cricketer = { id: 'bw1', name: 'Bench Bowler', role: 'BOWL', category: 'CONSISTENT', basePower: 6, modifiers: {}, traits: [] };
+const defaultBatter: Cricketer = { id: 'b1', name: 'Bench Batter', role: 'BAT', category: 'CONSISTENT', basePower: 6, batting_stat: 0, bowling_stat: 0, modifiers: {}, traits: [] };
+const defaultBowler: Cricketer = { id: 'bw1', name: 'Bench Bowler', role: 'BOWL', category: 'CONSISTENT', basePower: 6, batting_stat: 0, bowling_stat: 0, modifiers: {}, traits: [] };
 
 export default function MatchScoreboardPage({ params }: { params: Promise<{ matchId: string }> }) {
     const { matchId } = use(params);
@@ -80,6 +81,17 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
         fetchMatch();
     }, [matchId]);
 
+    // Listen for tactical changes from bowling team
+    useEffect(() => {
+        const channel = supabase.channel(`match_${matchId}`)
+            .on('broadcast', { event: 'SET_TACTIC' }, (payload) => {
+                const { tactic } = payload.payload;
+                setGameState(prev => ({ ...prev, bowlingTactic: tactic }));
+            })
+            .subscribe();
+        return () => { supabase.removeChannel(channel); };
+    }, [matchId]);
+
     const playBall = useCallback(() => {
         if (gameState.status === 'FINISHED') return;
 
@@ -103,7 +115,7 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
 
         // 1. Calculate side-effect once outside of the state setter
         const engine = new MatchEngine();
-        const resultDetails = engine.rollDice(engineBatter, engineBowler);
+        const resultDetails = engine.rollDice(engineBatter, engineBowler, gameState.bowlingTactic);
 
         // 2. Set visual auxiliary states
         setActiveBatter(engineBatter);

@@ -1,0 +1,2 @@
+ALTER TABLE players
+ADD COLUMN IF NOT EXISTS is_unsold BOOLEAN DEFAULT false;

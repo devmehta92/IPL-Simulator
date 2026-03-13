@@ -21,6 +21,10 @@ interface PlayerData {
     nationality: string;
     category: string;
     base_price: number;
+    is_unsold?: boolean;
+    base_power?: number;
+    batting_stat?: number;
+    bowling_stat?: number;
 }
 
 export default function LiveAuctionPage({ params }: { params: Promise<{ sessionId: string }> }) {
@@ -107,8 +111,10 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ sessionI
 
     const handleDrawNextPlayer = (category?: string) => {
         let pool = unsoldPlayers;
-        if (category) {
-            pool = unsoldPlayers.filter(p => p.category === category);
+        if (category === 'UNSOLD') {
+            pool = unsoldPlayers.filter(p => p.is_unsold === true);
+        } else if (category) {
+            pool = unsoldPlayers.filter(p => p.category === category && !p.is_unsold);
         }
 
         if (pool.length === 0) {
@@ -195,21 +201,46 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ sessionI
         setIsProcessing(false);
     };
 
-    const handlePass = () => {
+    const handlePass = async () => {
         if (!activePlayer) return;
-        socket.send(JSON.stringify({ type: 'MARK_UNSOLD', playerId: activePlayer.id }));
+        setIsProcessing(true);
 
-        setTimeout(() => {
-            // Refresh to waiting state after a brief visual delay to see 'Unsold'
-            socket.send(JSON.stringify({ type: 'SHOW_PLAYER', playerId: null, basePrice: 0 }));
-        }, 1500);
+        try {
+            // 1. Calculate the new depreciated price (20% penalty, minimum 0.5 Cr)
+            const currentPriceStr = finalPrice || activePlayer.base_price.toString();
+            const currentPrice = parseFloat(currentPriceStr) || activePlayer.base_price;
+            const discountedPrice = Math.max(0.50, Number((currentPrice * 0.8).toFixed(2)));
+
+            // 2. Persist the depreciation to the database so they appear cheaper in the pool
+            await supabase
+                .from('players')
+                .update({ base_price: discountedPrice, is_unsold: true })
+                .eq('id', activePlayer.id);
+
+            // 3. Notify the room
+            socket.send(JSON.stringify({ type: 'MARK_UNSOLD', playerId: activePlayer.id }));
+
+            // 4. Refresh local table to get the new base_price into the unsold pool
+            await fetchGameData();
+
+            setTimeout(() => {
+                // Refresh to waiting state after a brief visual delay to see 'Unsold'
+                socket.send(JSON.stringify({ type: 'SHOW_PLAYER', playerId: null, basePrice: 0 }));
+            }, 1500);
+        } catch (error) {
+            console.error("Error declaring unsold player:", error);
+            alert("Database Error!");
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     // Derived counts for Host UI
-    const starCount = unsoldPlayers.filter(p => p.category === 'STAR').length;
-    const consistentCount = unsoldPlayers.filter(p => p.category === 'CONSISTENT').length;
-    const volatileCount = unsoldPlayers.filter(p => p.category === 'VOLATILE').length;
-    const weakCount = unsoldPlayers.filter(p => p.category === 'WEAK').length;
+    const starCount = unsoldPlayers.filter(p => p.category === 'STAR' && !p.is_unsold).length;
+    const consistentCount = unsoldPlayers.filter(p => p.category === 'CONSISTENT' && !p.is_unsold).length;
+    const volatileCount = unsoldPlayers.filter(p => p.category === 'VOLATILE' && !p.is_unsold).length;
+    const weakCount = unsoldPlayers.filter(p => p.category === 'WEAK' && !p.is_unsold).length;
+    const unsoldCategoryCount = unsoldPlayers.filter(p => p.is_unsold).length;
 
     return (
         <div className="bg-[#0a1410] text-slate-100 min-h-screen flex flex-col overflow-hidden font-display">
@@ -312,6 +343,16 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ sessionI
                                         <span className="text-[10px] text-slate-400">{weakCount} Left</span>
                                     </button>
                                 </div>
+
+                                <button
+                                    onClick={() => handleDrawNextPlayer('UNSOLD')}
+                                    disabled={unsoldCategoryCount === 0}
+                                    className="w-full mt-2 h-14 bg-red-500/20 focus:bg-red-500/30 hover:bg-red-500/30 text-red-400 border border-red-500/30 font-bold text-sm rounded-xl transition-all shadow-lg flex flex-col justify-center items-center disabled:opacity-30 disabled:cursor-not-allowed"
+                                >
+                                    <span className="flex items-center gap-1 leading-none"><span className="material-symbols-outlined text-[14px]">refresh</span> DISCOUNTED (UNSOLD)</span>
+                                    <span className="text-[10px] text-red-400/70">{unsoldCategoryCount} Left</span>
+                                </button>
+
                                 <button
                                     onClick={() => handleDrawNextPlayer()}
                                     disabled={unsoldPlayers.length === 0}
@@ -444,6 +485,34 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ sessionI
                                     <div className="flex items-center gap-2 px-6 py-3 bg-white/5 rounded-xl border border-white/5">
                                         <span className="material-symbols-outlined text-blue-400">public</span>
                                         <span className="text-white font-bold text-xl">{activePlayer.nationality}</span>
+                                    </div>
+                                </div>
+
+                                {/* Player Stats Row */}
+                                <div className="flex items-center gap-8 mt-10">
+                                    <div className="flex flex-col items-center">
+                                        <span className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">Batting</span>
+                                        <div className="flex items-center gap-1">
+                                            {[...Array(10)].map((_, i) => (
+                                                <div key={i} className={`w-2 h-6 rounded-full ${i < (activePlayer.batting_stat || 5) ? 'bg-primary' : 'bg-white/10'}`}></div>
+                                            ))}
+                                            <span className="ml-2 text-2xl font-black text-white">{activePlayer.batting_stat || 5}</span>
+                                        </div>
+                                    </div>
+                                    <div className="h-12 w-[1px] bg-white/10"></div>
+                                    <div className="flex flex-col items-center">
+                                        <span className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">Bowling</span>
+                                        <div className="flex items-center gap-1">
+                                            {[...Array(10)].map((_, i) => (
+                                                <div key={i} className={`w-2 h-6 rounded-full ${i < (activePlayer.bowling_stat || 5) ? 'bg-blue-500' : 'bg-white/10'}`}></div>
+                                            ))}
+                                            <span className="ml-2 text-2xl font-black text-white">{activePlayer.bowling_stat || 5}</span>
+                                        </div>
+                                    </div>
+                                    <div className="h-12 w-[1px] bg-white/10"></div>
+                                    <div className="flex flex-col items-center">
+                                        <span className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">Power</span>
+                                        <div className="text-4xl font-black text-yellow-500">{activePlayer.base_power || 6}</div>
                                     </div>
                                 </div>
 

@@ -13,6 +13,10 @@ export interface PlayerData {
     nationality: string;
     category: string;
     base_price: number;
+    is_unsold?: boolean;
+    base_power?: number;
+    batting_stat?: number;
+    bowling_stat?: number;
 }
 
 export interface RosterData {

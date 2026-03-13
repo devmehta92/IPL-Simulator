@@ -21,6 +21,9 @@ interface PlayerData {
     nationality: string;
     category: string;
     base_price: number;
+    base_power?: number;
+    batting_stat?: number;
+    bowling_stat?: number;
 }
 
 interface RosterData {
@@ -224,6 +227,21 @@ export default function TeamDashboardPage({ params }: { params: Promise<{ teamId
                             </div>
                             {weakCount < 3 && <p className="text-xs text-red-400/70 mt-3 font-semibold">*Must draft at least {3 - weakCount} more weak players.</p>}
                         </div>
+
+                        {/* Scouting Shortcut */}
+                        <button 
+                            onClick={() => router.push(`/team/${teamId}/scout`)}
+                            className="w-full bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-4 flex items-center justify-between group transition-all"
+                        >
+                            <div className="flex items-center gap-3">
+                                <span className="material-symbols-outlined text-yellow-500 group-hover:scale-110 transition-transform">search_insights</span>
+                                <div className="text-left">
+                                    <div className="text-white font-bold text-sm">Scout Player Pool</div>
+                                    <div className="text-slate-500 text-[10px] uppercase font-bold tracking-widest">Analyze Talent & Stats</div>
+                                </div>
+                            </div>
+                            <span className="material-symbols-outlined text-slate-600 group-hover:translate-x-1 transition-transform">chevron_right</span>
+                        </button>
                     </div>
                 </aside>
 
@@ -317,6 +335,28 @@ export default function TeamDashboardPage({ params }: { params: Promise<{ teamId
                                             <span className="bg-white/10 px-3 py-1.5 rounded font-bold tracking-wider">{activePlayer.nationality}</span>
                                             <span className={`px-3 py-1.5 rounded font-bold tracking-wider ${activePlayer.category === 'STAR' ? 'text-yellow-400 bg-yellow-500/20 border border-yellow-500/30' : activePlayer.category === 'CONSISTENT' ? 'text-blue-400 bg-blue-500/20 border border-blue-500/30' : activePlayer.category === 'VOLATILE' ? 'text-purple-400 bg-purple-500/20 border border-purple-500/30' : 'text-slate-400 bg-white/10 border border-white/5'}`}>{activePlayer.category} tier</span>
                                         </div>
+                                        <div className="flex items-center gap-4 mt-3">
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Bat</span>
+                                                <div className="flex gap-0.5">
+                                                    {[...Array(5)].map((_, i) => (
+                                                        <div key={i} className={`w-1.5 h-3 rounded-full ${i < Math.ceil((activePlayer.batting_stat || 5) / 2) ? 'bg-primary' : 'bg-white/10'}`}></div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Bowl</span>
+                                                <div className="flex gap-0.5">
+                                                    {[...Array(5)].map((_, i) => (
+                                                        <div key={i} className={`w-1.5 h-3 rounded-full ${i < Math.ceil((activePlayer.bowling_stat || 5) / 2) ? 'bg-blue-400' : 'bg-white/10'}`}></div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Pow</span>
+                                                <span className="text-yellow-500 font-black text-xs">{activePlayer.base_power || 6}</span>
+                                            </div>
+                                        </div>
                                     </div>
                                     <div className="text-right border-l border-white/10 pl-8 shrink-0 flex flex-col justify-center">
                                         <div className="text-xs text-slate-500 uppercase tracking-widest font-bold mb-1">Asking Price</div>
@@ -383,7 +423,7 @@ function QuotaProgress({ label, current, min, color }: { label: string, current:
     );
 }
 
-function PlayerCard({ name, role, price, category, nationality, isStarting }: { name: string, role: string, price: number, category: string, nationality?: string, isStarting?: boolean }) {
+function PlayerCard({ name, role, price, category, nationality, isStarting, battingStat, bowlingStat, power }: { name: string, role: string, price: number, category: string, nationality?: string, isStarting?: boolean, battingStat?: number, bowlingStat?: number, power?: number }) {
     const isStar = category === 'STAR';
 
     return (
@@ -407,7 +447,30 @@ function PlayerCard({ name, role, price, category, nationality, isStarting }: { 
                     </div>
                     <div className="flex-1 min-w-0">
                         <h3 className="text-white text-xl font-bold truncate leading-tight tracking-tight">{name}</h3>
-                        <p className="text-primary/80 text-sm font-medium mt-0.5">{role === 'BAT' ? 'Batsman' : role === 'BOWL' ? 'Bowler' : role === 'WK' ? 'Wicket Keeper' : 'All Rounder'}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                            <p className="text-primary/80 text-sm font-medium">{role === 'BAT' ? 'Batsman' : role === 'BOWL' ? 'Bowler' : role === 'WK' ? 'Wicket Keeper' : 'All Rounder'}</p>
+                            <span className="text-slate-600 text-xs">•</span>
+                            <span className="text-yellow-500 font-bold text-xs">P{power || 6}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex gap-2">
+                    <div className="flex-1 bg-black/40 rounded-xl p-2 border border-white/5 flex flex-col items-center">
+                        <span className="text-[8px] text-slate-500 uppercase tracking-widest font-bold mb-1">Batting</span>
+                        <div className="flex gap-0.5">
+                            {[...Array(5)].map((_, i) => (
+                                <div key={i} className={`w-1 h-3 rounded-full ${i < Math.ceil((battingStat || 5) / 2) ? 'bg-primary' : 'bg-white/10'}`}></div>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="flex-1 bg-black/40 rounded-xl p-2 border border-white/5 flex flex-col items-center">
+                        <span className="text-[8px] text-slate-500 uppercase tracking-widest font-bold mb-1">Bowling</span>
+                        <div className="flex gap-0.5">
+                            {[...Array(5)].map((_, i) => (
+                                <div key={i} className={`w-1 h-3 rounded-full ${i < Math.ceil((bowlingStat || 5) / 2) ? 'bg-blue-400' : 'bg-white/10'}`}></div>
+                            ))}
+                        </div>
                     </div>
                 </div>
 

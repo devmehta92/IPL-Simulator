@@ -1,5 +1,6 @@
 export type PlayerRole = 'BAT' | 'BOWL' | 'AR' | 'WK';
 export type PlayerCategory = 'STAR' | 'CONSISTENT' | 'VOLATILE' | 'WEAK';
+export type BowlingTactic = 'DEFENSIVE' | 'BALANCED' | 'AGGRESSIVE';
 
 export interface Cricketer {
     id: string;
@@ -7,6 +8,8 @@ export interface Cricketer {
     role: PlayerRole;
     category: PlayerCategory;
     basePower: number; // Maintained for tie breakers or base thresholds if needed
+    batting_stat: number;
+    bowling_stat: number;
     modifiers: Record<string, number>;
     traits: string[];
 }
@@ -15,6 +18,7 @@ export interface MatchState {
     status: 'STRATEGY' | 'IN_PROGRESS' | 'INNINGS_BREAK' | 'FINISHED';
     battingTeamId: string;
     bowlingTeamId: string;
+    bowlingTactic?: BowlingTactic;
     innings: 1 | 2;
     score: {
         runs: number;
@@ -53,24 +57,40 @@ export class MatchEngine {
         }
     }
 
-    rollDice(batter: Cricketer, bowler: Cricketer): DiceRollResult {
+    rollDice(batter: Cricketer, bowler: Cricketer, tactic: BowlingTactic = 'BALANCED'): DiceRollResult {
         // 1. Base 1d6 rolls
-        const batRoll = Math.floor(Math.random() * 6) + 1;
-        const bowlRoll = Math.floor(Math.random() * 6) + 1;
+        let batRoll = Math.floor(Math.random() * 6) + 1;
+        let bowlRoll = Math.floor(Math.random() * 6) + 1;
 
-        // 2. Apply V2 Category Multipliers
+        // 2. Apply Tactical Stances
+        let tacticBonusBowl = 0;
+        let tacticBonusBat = 0;
+
+        if (tactic === 'DEFENSIVE') {
+            tacticBonusBowl = 1;
+        } else if (tactic === 'AGGRESSIVE') {
+            tacticBonusBowl = 2;
+            tacticBonusBat = 1; // High risk: batter also gets a boost
+        }
+
+        // 3. Apply V2 Category Multipliers
         const batMultiplier = this.getCategoryMultiplier(batter.category, batRoll);
         const bowlMultiplier = this.getCategoryMultiplier(bowler.category, bowlRoll);
 
-        const batScore = batRoll * batMultiplier;
-        const bowlScore = bowlRoll * bowlMultiplier;
+        // 4. Add small stat-based bonuses
+        const batStatBonus = Math.floor(batter.batting_stat / 3);
+        const bowlStatBonus = Math.floor(bowler.bowling_stat / 3);
 
-        // 3. Volatility Check (Rolling a 6)
+        const batScore = (batRoll * batMultiplier) + batStatBonus + tacticBonusBat;
+        const bowlScore = (bowlRoll * bowlMultiplier) + bowlStatBonus + tacticBonusBowl;
+
+        // 5. Volatility Check (Rolling a 6)
         const isVolatile = batRoll === 6 || bowlRoll === 6;
 
-        // 4. Net Result Calculation: Straight Accumulator
+        // 6. Net Result Calculation: Straight Accumulator
         const netResult = batScore - bowlScore;
-        const eventDescription = `${batter.name} (${batRoll}x${batMultiplier}=${batScore}) vs ${bowler.name} (${bowlRoll}x${bowlMultiplier}=${bowlScore})`;
+        const tacticLabel = tactic !== 'BALANCED' ? ` [${tactic}]` : '';
+        const eventDescription = `${batter.name} (${batRoll}x${batMultiplier}+${batStatBonus}${tacticBonusBat ? '+'+tacticBonusBat : ''}) vs ${bowler.name}${tacticLabel} (${bowlRoll}x${bowlMultiplier}+${bowlStatBonus}+${tacticBonusBowl}=${bowlScore})`;
 
         return {
             battingRoll: batRoll,

@@ -3,13 +3,14 @@
 import React, { useEffect, useState, use } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Cricketer, DiceRollResult } from '@/game/matchEngine';
+import { Cricketer, DiceRollResult, BowlingTactic } from '@/game/matchEngine';
 import { TeamData, LogEntry } from '@/types';
 
 interface MatchState {
     innings: 1 | 2;
     battingTeamId: string;
     bowlingTeamId: string;
+    bowlingTactic?: BowlingTactic;
     team1Score: { runs: number, balls: number };
     team2Score: { runs: number, balls: number };
     target: number | null;
@@ -17,8 +18,8 @@ interface MatchState {
     winner: string | null;
 }
 
-const defaultBatter: Cricketer = { id: 'b1', name: 'Bench Batter', role: 'BAT', category: 'CONSISTENT', basePower: 6, modifiers: {}, traits: [] };
-const defaultBowler: Cricketer = { id: 'bw1', name: 'Bench Bowler', role: 'BOWL', category: 'CONSISTENT', basePower: 6, modifiers: {}, traits: [] };
+const defaultBatter: Cricketer = { id: 'b1', name: 'Bench Batter', role: 'BAT', category: 'CONSISTENT', basePower: 6, batting_stat: 0, bowling_stat: 0, modifiers: {}, traits: [] };
+const defaultBowler: Cricketer = { id: 'bw1', name: 'Bench Bowler', role: 'BOWL', category: 'CONSISTENT', basePower: 6, batting_stat: 0, bowling_stat: 0, modifiers: {}, traits: [] };
 
 export default function SpectatorMatchPage({ params }: { params: Promise<{ matchId: string }> }) {
     const { matchId } = use(params);
@@ -46,6 +47,21 @@ export default function SpectatorMatchPage({ params }: { params: Promise<{ match
     const [activeBowler, setActiveBowler] = useState<Cricketer>(defaultBowler);
 
     const MAX_BALLS = 11; // 1 Roll per 11 squad members
+
+    const handleSetTactic = async (tactic: BowlingTactic) => {
+        const channel = supabase.channel(`match_${matchId}`);
+        await channel.subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') {
+                await channel.send({
+                    type: 'broadcast',
+                    event: 'SET_TACTIC',
+                    payload: { tactic }
+                });
+                setGameState(prev => ({ ...prev, bowlingTactic: tactic }));
+                supabase.removeChannel(channel);
+            }
+        });
+    };
 
     useEffect(() => {
         const fetchMatch = async () => {
@@ -309,6 +325,26 @@ export default function SpectatorMatchPage({ params }: { params: Promise<{ match
                                             >
                                                 ROLL DICE
                                             </button>
+                                        ) : myTeamId === bowlingTeam.id ? (
+                                            <div className="w-full flex flex-col gap-4 px-6 relative z-20">
+                                                <span className="text-blue-400 font-bold text-xs uppercase tracking-widest">Select Bowling Tactic</span>
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    {(['DEFENSIVE', 'BALANCED', 'AGGRESSIVE'] as BowlingTactic[]).map(t => (
+                                                        <button
+                                                            key={t}
+                                                            onClick={() => handleSetTactic(t)}
+                                                            className={`py-3 rounded-xl font-bold text-[10px] tracking-tight transition-all border ${gameState.bowlingTactic === t ? 'bg-blue-500 border-blue-400 text-white shadow-[0_0_15px_rgba(59,130,246,0.4)]' : 'bg-white/5 border-white/10 text-slate-400 hover:border-white/30'}`}
+                                                        >
+                                                            {t}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <p className="text-[10px] text-slate-500 italic mt-1 leading-tight">
+                                                    {gameState.bowlingTactic === 'DEFENSIVE' && "Defensive: +1 Bowl Bonus. Safest choice."}
+                                                    {(gameState.bowlingTactic === 'BALANCED' || !gameState.bowlingTactic) && "Balanced: Standard risk/reward."}
+                                                    {gameState.bowlingTactic === 'AGGRESSIVE' && "Aggressive: +2 Bowl Bonus, but Batter gets +1."}
+                                                </p>
+                                            </div>
                                         ) : (
                                             <>
                                                 <div className="absolute inset-0 bg-primary/5 animate-pulse"></div>
@@ -316,6 +352,11 @@ export default function SpectatorMatchPage({ params }: { params: Promise<{ match
                                                 <div className="text-center relative z-10">
                                                     <span className="text-white font-bold text-lg block">Live Feed Connected</span>
                                                     <span className="text-primary font-bold uppercase tracking-widest text-xs">Waiting for {battingTeam.name} to roll...</span>
+                                                    {gameState.bowlingTactic && (
+                                                        <div className="mt-2 bg-blue-500/20 text-blue-400 text-[10px] font-bold px-3 py-1 rounded-full border border-blue-500/30 inline-block">
+                                                            TACTIC: {gameState.bowlingTactic}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </>
                                         )}
