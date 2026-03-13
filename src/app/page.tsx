@@ -27,6 +27,7 @@ export default function Home() {
   // Form State
   const [sessionName, setSessionName] = useState('The Boys 2026 Auction');
   const [hostName, setHostName] = useState('');
+  const [hostPin, setHostPin] = useState('');
   const [players, setPlayers] = useState([
     { ownerName: '', teamIdx: 0 },
     { ownerName: '', teamIdx: 1 },
@@ -57,6 +58,10 @@ export default function Home() {
       alert("Please enter a Host Name");
       return;
     }
+    if (hostPin.trim().length !== 4) {
+      alert("Please enter a strictly 4-digit Host PIN.");
+      return;
+    }
     const validPlayers = players.filter(p => p.ownerName.trim() !== '');
     if (validPlayers.length < 2) {
       alert("You need at least 2 valid player teams to start the auction.");
@@ -70,7 +75,8 @@ export default function Home() {
         .from('league_sessions')
         .insert({
           name: sessionName,
-          status: 'LOBBY'
+          status: 'LOBBY',
+          host_pin: hostPin.trim()
         })
         .select()
         .single();
@@ -208,6 +214,27 @@ export default function Home() {
                       className="w-full bg-background-dark/50 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-primary transition-colors"
                       placeholder="Enter your name"
                     />
+                  </div>
+                </div>
+
+                {/* Host PIN Row */}
+                <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl">
+                  <div className="flex items-start gap-3">
+                    <span className="material-symbols-outlined text-red-500 mt-1">lock</span>
+                    <div className="flex-1">
+                      <label className="block text-red-400 font-bold mb-1">Secure Host PIN (Required)</label>
+                      <p className="text-sm text-red-500/70 mb-3">This 4-digit code prevents players from accessing your Host TV Dashboard from their devices.</p>
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={4}
+                        value={hostPin}
+                        onChange={(e) => setHostPin(e.target.value)}
+                        className="w-32 bg-background-dark border border-red-500/30 rounded-lg px-4 py-2 text-white text-center text-xl tracking-[0.3em] font-mono focus:outline-none focus:border-red-400 transition-colors"
+                        placeholder="4432"
+                      />
+                    </div>
                   </div>
                 </div>
 

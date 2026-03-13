@@ -37,6 +37,7 @@ export interface DiceRollResult {
     bowlMultiplier: number;
     batScore: number;
     bowlScore: number;
+    netResult: number;
     runs: number;
     isWicket: boolean;
     isVolatile: boolean;
@@ -102,6 +103,8 @@ export class MatchEngine {
         const outcomeLabel = isWicket ? 'OUT!' : runs > 0 ? `${runs} Runs` : 'Dot Ball';
         const eventDescription = `${batter.name} vs ${bowler.name}${tacticLabel}: ${outcomeLabel} (${batScore} vs ${bowlScore})`;
 
+        const netResult = batScore - bowlScore;
+
         return {
             battingRoll: batRoll,
             bowlingRoll: bowlRoll,
@@ -109,6 +112,7 @@ export class MatchEngine {
             bowlMultiplier,
             batScore,
             bowlScore,
+            netResult,
             runs,
             isWicket,
             isVolatile,
