@@ -58,8 +58,8 @@ export class MatchEngine {
 
     rollDice(batter: Cricketer, bowler: Cricketer, tactic: BowlingTactic = 'BALANCED'): DiceRollResult {
         // 1. Base 1d6 rolls
-        let batRoll = Math.floor(Math.random() * 6) + 1;
-        let bowlRoll = Math.floor(Math.random() * 6) + 1;
+        const batRoll = Math.floor(Math.random() * 6) + 1;
+        const bowlRoll = Math.floor(Math.random() * 6) + 1;
 
         // 2. Apply Tactical Stances
         let tacticBonusBowl = 0;

@@ -79,8 +79,8 @@ export default function LeagueStandingsPage() {
                     if (m.status === 'FINISHED' && m.result) {
                         const { teamA_runs, teamA_overs, teamB_runs, teamB_overs, is_tie } = m.result;
                         engine.recordMatchResult(
-                            m.team_a_id, teamA_runs || 0, teamA_overs || 20,
-                            m.team_b_id, teamB_runs || 0, teamB_overs || 20,
+                            m.team_a_id, teamA_runs || 0, teamA_overs || 11,
+                            m.team_b_id, teamB_runs || 0, teamB_overs || 11,
                             is_tie || false
                         );
                     } else if (m.status === 'SCHEDULED' && !foundNext) {

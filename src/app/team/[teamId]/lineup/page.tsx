@@ -63,28 +63,34 @@ export default function SquadLineupPage({ params }: { params: Promise<{ teamId: 
     const arCount = selectedPlayers.filter(r => r.players.role === 'AR').length;
     const wkCount = selectedPlayers.filter(r => r.players.role === 'WK').length;
 
-    // Strict Quota Verification (Can be adjusted based on desired rules)
-    const isValid = selectedIds.size === 11 && wkCount >= 1 && bowlerCount >= 3;
+    // Dynamic Quota Verification: Scales down gracefully if drafted roster doesn't meet minimums
+    const draftedWK = roster.filter(r => r.players.role === 'WK').length;
+    const draftedBowl = roster.filter(r => r.players.role === 'BOWL').length;
+
+    const requiredTotal = Math.min(11, roster.length);
+    const requiredWK = Math.min(1, draftedWK);
+    const requiredBowl = Math.min(3, draftedBowl);
+
+    const isValid = selectedIds.size === requiredTotal && wkCount >= requiredWK && bowlerCount >= requiredBowl;
 
     const handleSaveLineup = async () => {
         if (!isValid || isSaving) return;
         setIsSaving(true);
 
         try {
-            // Unset all currently starting
-            await supabase.from('team_rosters').update({ is_starting: false }).eq('team_id', teamId);
+            // Atomic update via RPC to avoid data corruption
+            const { error } = await supabase.rpc('lock_team_lineup', {
+                p_team_id: teamId,
+                p_player_ids: Array.from(selectedIds)
+            });
 
-            // Set newly selected as starting
-            const selectedArray = Array.from(selectedIds);
-            await supabase.from('team_rosters').update({ is_starting: true })
-                .eq('team_id', teamId)
-                .in('player_id', selectedArray);
+            if (error) throw error;
 
             alert("Lineup Locked Successfully!");
             router.push(`/team/${teamId}`);
         } catch (error) {
             console.error("Error saving lineup", error);
-            alert("Failed to save lineup");
+            alert("Failed to save lineup. Please try again.");
         } finally {
             setIsSaving(false);
         }
@@ -109,7 +115,7 @@ export default function SquadLineupPage({ params }: { params: Promise<{ teamId: 
                 <div className="flex items-center gap-4 mt-4 sm:mt-0">
                     <div className="flex flex-col items-end mr-4">
                         <span className="text-sm text-slate-400 font-bold uppercase tracking-widest">Selected</span>
-                        <span className={`text-xl font-black ${selectedIds.size === 11 ? 'text-primary' : 'text-amber-500'}`}>{selectedIds.size} / 11</span>
+                        <span className={`text-xl font-black ${selectedIds.size === requiredTotal ? 'text-primary' : 'text-amber-500'}`}>{selectedIds.size} / {requiredTotal}</span>
                     </div>
                     <button
                         onClick={handleSaveLineup}
@@ -128,14 +134,14 @@ export default function SquadLineupPage({ params }: { params: Promise<{ teamId: 
                         <span className="material-symbols-outlined text-primary">analytics</span> Squad Balance
                     </h3>
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                        <QuotaMetric label="Wicket Keeper (Min 1)" count={wkCount} min={1} color="text-purple-400" />
-                        <QuotaMetric label="Bowlers (Min 3)" count={bowlerCount} min={3} color="text-blue-400" />
+                        <QuotaMetric label={`Wicket Keeper (Min ${requiredWK})`} count={wkCount} min={requiredWK} color="text-purple-400" />
+                        <QuotaMetric label={`Bowlers (Min ${requiredBowl})`} count={bowlerCount} min={requiredBowl} color="text-blue-400" />
                         <QuotaMetric label="Batters" count={batterCount} min={0} color="text-primary" />
                         <QuotaMetric label="All-Rounders" count={arCount} min={0} color="text-amber-400" />
                     </div>
-                    {!isValid && selectedIds.size === 11 && (
+                    {!isValid && selectedIds.size === requiredTotal && (
                         <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-3 text-red-400 font-bold text-sm">
-                            <span className="material-symbols-outlined">warning</span> You must meet all minimum role requirements (1 WK, 3 Bowlers).
+                            <span className="material-symbols-outlined">warning</span> You must meet all minimum role requirements based on your drafted roster.
                         </div>
                     )}
                 </div>

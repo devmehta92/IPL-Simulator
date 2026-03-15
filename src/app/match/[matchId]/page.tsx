@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useState, use, useCallback } from 'react';
+import React, { useEffect, useState, use, useCallback, useRef } from 'react';
+import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import HostAuthGate from '@/components/HostAuthGate';
@@ -47,7 +48,15 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
     const [activeBatter, setActiveBatter] = useState<Cricketer>(defaultBatter);
     const [activeBowler, setActiveBowler] = useState<Cricketer>(defaultBowler);
 
-    const MAX_BALLS = 11; // 1 Roll per 11 squad members
+    // Animation States
+    const [isRolling, setIsRolling] = useState(false);
+    const [scrambleBat, setScrambleBat] = useState(1);
+    const [scrambleBowl, setScrambleBowl] = useState(1);
+
+    const MAX_BALLS = 11;
+
+    // Latest state ref for the conduction listener
+    const playBallRef = useRef<() => void>(() => { });
 
     useEffect(() => {
         const fetchMatch = async () => {
@@ -84,7 +93,7 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
 
     // Listen for tactical changes from bowling team
     useEffect(() => {
-        const channel = supabase.channel(`match_${matchId}`)
+        const channel = supabase.channel(`match_tactics_${matchId}`)
             .on('broadcast', { event: 'SET_TACTIC' }, (payload) => {
                 const { tactic } = payload.payload;
                 setGameState(prev => ({ ...prev, bowlingTactic: tactic }));
@@ -93,178 +102,182 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
         return () => { supabase.removeChannel(channel); };
     }, [matchId]);
 
-    const playBall = useCallback(() => {
-        if (gameState.status === 'FINISHED') return;
+    // Scramble Animation Effect
+    useEffect(() => {
+        if (!isRolling) return;
+        const interval = setInterval(() => {
+            setScrambleBat(Math.floor(Math.random() * 6) + 1);
+            setScrambleBowl(Math.floor(Math.random() * 6) + 1);
+        }, 80);
+        return () => clearInterval(interval);
+    }, [isRolling]);
 
-        // Context derived from state closure
+    const playBall = useCallback(() => {
+        if (gameState.status === 'FINISHED' || isRolling) return;
+
         const isFirstInnings = gameState.innings === 1;
         const currentScore = isFirstInnings ? gameState.team1Score : gameState.team2Score;
         const currentBallIndex = currentScore.balls;
 
-        // Safety Check
         if (currentBallIndex >= MAX_BALLS) return;
 
         const battingRoster = isFirstInnings ? teamARoster : teamBRoster;
         const bowlingRoster = isFirstInnings ? teamBRoster : teamARoster;
 
-        // Extract Players statically by ball index (removed `% length` to force empty slots to appear as Bench Players)
         const batterData = battingRoster[currentBallIndex]?.players;
         const bowlerData = bowlingRoster[currentBallIndex]?.players;
 
-        const engineBatter: Cricketer = { ...defaultBatter, ...batterData, category: (batterData?.category || 'CONSISTENT') as PlayerCategory, role: (batterData?.role || 'BAT') as PlayerRole };
-        const engineBowler: Cricketer = { ...defaultBowler, ...bowlerData, category: (bowlerData?.category || 'CONSISTENT') as PlayerCategory, role: (bowlerData?.role || 'BOWL') as PlayerRole };
+        const engineBatter: Cricketer = { ...defaultBatter, ...batterData, category: (batterData?.category || 'CONSISTENT') as PlayerCategory, role: (batterData?.role || 'BAT') as PlayerRole, batting_stat: batterData?.batting_stat || 5, bowling_stat: batterData?.bowling_stat || 2 };
+        const engineBowler: Cricketer = { ...defaultBowler, ...bowlerData, category: (bowlerData?.category || 'CONSISTENT') as PlayerCategory, role: (bowlerData?.role || 'BOWL') as PlayerRole, batting_stat: bowlerData?.batting_stat || 2, bowling_stat: bowlerData?.bowling_stat || 5 };
 
-        // 1. Calculate side-effect once outside of the state setter
         const engine = new MatchEngine();
         const resultDetails = engine.rollDice(engineBatter, engineBowler, gameState.bowlingTactic);
 
-        // 2. Set visual auxiliary states
-        setActiveBatter(engineBatter);
-        setActiveBowler(engineBowler);
-        setLastRoll(resultDetails);
+        setIsRolling(true);
 
-        // 3. Append core log synchronously outside the state atomic updater
-        const logEntry = {
-            ball: currentBallIndex + 1,
-            maxBalls: MAX_BALLS,
-            msg: resultDetails.eventDescription,
-            details: resultDetails,
-            isBreak: false
-        };
-        setLogs(l => [logEntry, ...l].slice(0, 15));
+        setTimeout(() => {
+            setIsRolling(false);
+            setActiveBatter(engineBatter);
+            setActiveBowler(engineBowler);
+            setLastRoll(resultDetails);
 
-        // 4. Update the core atomic State machine strictly without mutating prev
-        setGameState(prev => {
-            const isFirstInningsPrev = prev.innings === 1;
-
-            // MUST Deep Clone Object References to survive React Strict Mode Double-Invoke
-            const newTeam1Score = { ...prev.team1Score };
-            const newTeam2Score = { ...prev.team2Score };
-            const currentScoreObj = isFirstInningsPrev ? newTeam1Score : newTeam2Score;
-
-            if (currentScoreObj.balls >= MAX_BALLS) return prev; // Idempotent check
-
-            // Apply specific immutable action
-            currentScoreObj.runs += resultDetails.runs;
-            if (resultDetails.isWicket) currentScoreObj.wickets += 1;
-            currentScoreObj.balls += 1;
-
-            const nextState = {
-                ...prev,
-                team1Score: newTeam1Score,
-                team2Score: newTeam2Score
+            const logEntry = {
+                ball: currentBallIndex + 1,
+                maxBalls: MAX_BALLS,
+                msg: resultDetails.eventDescription,
+                details: resultDetails,
+                isBreak: false
             };
+            setLogs(l => [logEntry, ...l].slice(0, 15));
 
-            const isEndOfInnings = currentScoreObj.balls >= MAX_BALLS;
-            if (!teamA || !teamB) return nextState;
+            setGameState(prev => {
+                const isFirstInningsPrev = prev.innings === 1;
+                const newTeam1Score = { ...prev.team1Score };
+                const newTeam2Score = { ...prev.team2Score };
+                const currentScoreObj = isFirstInningsPrev ? newTeam1Score : newTeam2Score;
 
-            if (isFirstInningsPrev && isEndOfInnings) {
-                // Transition to Innings 2
-                nextState.innings = 2;
-                nextState.target = currentScoreObj.runs + 1;
-                nextState.battingTeamId = teamB.id;
-                nextState.bowlingTeamId = teamA.id;
+                if (currentScoreObj.balls >= MAX_BALLS) return prev;
 
-                // Side effects upon transistion must be escaped to setTimeout
-                setTimeout(() => {
-                    setLogs(l => [{ isBreak: true, msg: `Innings Break! Target is ${nextState.target}` }, ...l].slice(0, 15));
-                    const nextBat = teamBRoster[0]?.players;
-                    const nextBowl = teamARoster[0]?.players;
-                    if (nextBat) setActiveBatter({ ...defaultBatter, ...nextBat, category: (nextBat.category || 'CONSISTENT') as PlayerCategory, role: (nextBat.role || 'BAT') as PlayerRole, batting_stat: nextBat.batting_stat || 5, bowling_stat: nextBat.bowling_stat || 2 } as Cricketer);
-                    if (nextBowl) setActiveBowler({ ...defaultBowler, ...nextBowl, category: (nextBowl.category || 'CONSISTENT') as PlayerCategory, role: (nextBowl.role || 'BOWL') as PlayerRole, batting_stat: nextBowl.batting_stat || 2, bowling_stat: nextBowl.bowling_stat || 5 } as Cricketer);
-                    setLastRoll(null);
-                }, 0);
+                currentScoreObj.runs += resultDetails.runs;
+                if (resultDetails.isWicket) currentScoreObj.wickets += 1;
+                currentScoreObj.balls += 1;
 
-            } else if (!isFirstInningsPrev && (isEndOfInnings || nextState.team2Score.runs >= nextState.target!)) {
-                // Match Over
-                nextState.status = 'FINISHED';
-
-                let winMsg = '';
-                const t1 = nextState.team1Score;
-                const t2 = nextState.team2Score;
-
-                if (t2.runs >= nextState.target!) {
-                    nextState.winner = teamB.id;
-                    winMsg = `MATCH OVER! ${teamB.name} wins!`;
-                } else if (t2.runs < t1.runs) {
-                    nextState.winner = teamA.id;
-                    winMsg = `MATCH OVER! ${teamA.name} wins!`;
-                } else {
-                    // It's a tie on runs! Use Wickets as tie breaker (fewer is better)
-                    if (t2.wickets < t1.wickets) {
-                        nextState.winner = teamB.id;
-                        winMsg = `MATCH OVER! ${teamB.name} wins on Wickets!`;
-                    } else if (t1.wickets < t2.wickets) {
-                        nextState.winner = teamA.id;
-                        winMsg = `MATCH OVER! ${teamA.name} wins on Wickets!`;
-                    } else {
-                        // Still a tie! Use Total Power as final tie breaker
-                        const powerA = teamARoster.reduce((sum, r) => sum + (r.players.base_power || 6), 0);
-                        const powerB = teamBRoster.reduce((sum, r) => sum + (r.players.base_power || 6), 0);
-
-                        if (powerA > powerB) {
-                            nextState.winner = teamA.id;
-                            winMsg = `MATCH OVER! ${teamA.name} wins on Total Power!`;
-                        } else if (powerB > powerA) {
-                            nextState.winner = teamB.id;
-                            winMsg = `MATCH OVER! ${teamB.name} wins on Total Power!`;
-                        } else {
-                            nextState.winner = 'TIE';
-                            winMsg = `MATCH OVER! Absolute TIE!`;
-                        }
-                    }
-                }
-
-                setTimeout(() => {
-                    setLogs(l => [{ isBreak: true, msg: winMsg }, ...l].slice(0, 15));
-                }, 0);
-
-                const finalResult = {
-                    teamA_runs: t1.runs,
-                    teamA_wickets: t1.wickets,
-                    teamA_overs: t1.balls,
-                    teamB_runs: t2.runs,
-                    teamB_wickets: t2.wickets,
-                    teamB_overs: t2.balls,
-                    is_tie: nextState.winner === 'TIE',
-                    winner_id: nextState.winner,
-                    state: nextState
+                const nextState = {
+                    ...prev,
+                    team1Score: newTeam1Score,
+                    team2Score: newTeam2Score
                 };
 
-                supabase.from('matches')
-                    .update({ status: 'FINISHED', result: finalResult })
-                    .eq('id', matchId)
-                    .then();
-            }
+                const isEndOfInnings = currentScoreObj.balls >= MAX_BALLS;
+                if (!teamA || !teamB) return nextState;
 
-            // BROADCAST LIVE SYNC TO SPECTATOR DEVICES
-            supabase.channel(`match_${matchId}`).send({
-                type: 'broadcast',
-                event: 'LIVE_UPDATE',
-                payload: {
-                    gameState: nextState,
-                    activeBatter: engineBatter,
-                    activeBowler: engineBowler,
-                    lastRoll: resultDetails,
-                    logEntry: logEntry
+                if (isFirstInningsPrev && isEndOfInnings) {
+                    nextState.innings = 2;
+                    nextState.target = currentScoreObj.runs + 1;
+                    nextState.battingTeamId = teamB.id;
+                    nextState.bowlingTeamId = teamA.id;
+
+                    setTimeout(() => {
+                        setLogs(l => [{ isBreak: true, msg: `Innings Break! Target is ${nextState.target}` }, ...l].slice(0, 15));
+                        const nextBat = teamBRoster[0]?.players;
+                        const nextBowl = teamARoster[0]?.players;
+                        if (nextBat) setActiveBatter({ ...defaultBatter, ...nextBat, category: (nextBat.category || 'CONSISTENT') as PlayerCategory, role: (nextBat.role || 'BAT') as PlayerRole, batting_stat: nextBat.batting_stat || 5, bowling_stat: nextBat.bowling_stat || 2 } as Cricketer);
+                        if (nextBowl) setActiveBowler({ ...defaultBowler, ...nextBowl, category: (nextBowl.category || 'CONSISTENT') as PlayerCategory, role: (nextBowl.role || 'BOWL') as PlayerRole, batting_stat: nextBowl.batting_stat || 2, bowling_stat: nextBowl.bowling_stat || 5 } as Cricketer);
+                        setLastRoll(null);
+                    }, 0);
+
+                } else if (!isFirstInningsPrev && (isEndOfInnings || (nextState.team1Score.runs > 0 && nextState.team2Score.runs >= nextState.target!))) {
+                    nextState.status = 'FINISHED';
+                    let winMsg = '';
+                    const t1 = nextState.team1Score;
+                    const t2 = nextState.team2Score;
+
+                    if (t2.runs >= nextState.target!) {
+                        nextState.winner = teamB.id;
+                        winMsg = `MATCH OVER! ${teamB.name} wins!`;
+                    } else if (t2.runs < t1.runs) {
+                        nextState.winner = teamA.id;
+                        winMsg = `MATCH OVER! ${teamA.name} wins!`;
+                    } else {
+                        if (t2.wickets < t1.wickets) {
+                            nextState.winner = teamB.id;
+                            winMsg = `MATCH OVER! ${teamB.name} wins on Wickets!`;
+                        } else if (t1.wickets < t2.wickets) {
+                            nextState.winner = teamA.id;
+                            winMsg = `MATCH OVER! ${teamA.name} wins on Wickets!`;
+                        } else {
+                            const powerA = teamARoster.reduce((sum, r) => sum + (r.players.base_power || 6), 0);
+                            const powerB = teamBRoster.reduce((sum, r) => sum + (r.players.base_power || 6), 0);
+                            if (powerA > powerB) {
+                                nextState.winner = teamA.id;
+                                winMsg = `MATCH OVER! ${teamA.name} wins on Total Power!`;
+                            } else if (powerB > powerA) {
+                                nextState.winner = teamB.id;
+                                winMsg = `MATCH OVER! ${teamB.name} wins on Total Power!`;
+                            } else {
+                                nextState.winner = 'TIE';
+                                winMsg = `MATCH OVER! Absolute TIE!`;
+                            }
+                        }
+                    }
+
+                    setTimeout(() => {
+                        setLogs(l => [{ isBreak: true, msg: winMsg }, ...l].slice(0, 15));
+                    }, 0);
+
+                    const finalResult = {
+                        teamA_runs: t1.runs,
+                        teamA_wickets: t1.wickets,
+                        teamA_overs: t1.balls,
+                        teamB_runs: t2.runs,
+                        teamB_wickets: t2.wickets,
+                        teamB_overs: t2.balls,
+                        is_tie: nextState.winner === 'TIE',
+                        winner_id: nextState.winner,
+                        state: nextState
+                    };
+
+                    supabase.from('matches').update({ status: 'FINISHED', result: finalResult }).eq('id', matchId).then();
                 }
+
+                // DO NOT BROADCAST INSIDE UPDATER (Side Effect)
+                // Handled by separate useEffect now
+                return nextState;
             });
+        }, 1500); // Wait 1.5 seconds for dramatic scramble
+    }, [gameState, teamA, teamB, teamARoster, teamBRoster, matchId, MAX_BALLS, isRolling]);
 
-            return nextState;
-        });
-    }, [gameState.status, gameState.innings, gameState.team1Score, gameState.team2Score, teamARoster, teamBRoster, matchId, teamA, teamB]);
-
-    // WebSocket Listener for Remote Player Rolls
+    // Update the ref for the conduct roll listener
     useEffect(() => {
-        const channel = supabase.channel(`match_${matchId}`);
+        playBallRef.current = playBall;
+    }, [playBall]);
+
+    // Sync Broadcast Effect
+    useEffect(() => {
+        if (!lastRoll) return; // Only sync on actual events
+
+        supabase.channel(`match_${matchId}`).send({
+            type: 'broadcast',
+            event: 'LIVE_UPDATE',
+            payload: {
+                gameState,
+                activeBatter,
+                activeBowler,
+                lastRoll,
+                logEntry: logs[0]
+            }
+        });
+    }, [gameState, activeBatter, activeBowler, lastRoll, logs, matchId]);
+
+    // WebSocket Listener for Remote Player Rolls - Stable dependency
+    useEffect(() => {
+        const channel = supabase.channel(`match_conduct_${matchId}`);
         channel.on('broadcast', { event: 'CONDUCT_ROLL' }, () => {
-            playBall();
+            playBallRef.current();
         }).subscribe();
 
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, [matchId, playBall]);
+        return () => { supabase.removeChannel(channel); };
+    }, [matchId]); // playBall removed from deps to prevent re-sub
 
     if (!teamA || !teamB) return <div className="min-h-screen bg-[#0a1410] flex items-center justify-center text-primary">Loading Match...</div>;
 
@@ -362,13 +375,12 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
                                         <div key={i} className={`p-4 rounded-xl border ${i === 0 ? 'bg-black/60 border-primary shadow-[0_0_15px_rgba(43,238,121,0.15)]' : 'bg-black/30 border-white/5 opacity-80'} transition-all`}>
                                             <div className="flex justify-between items-center mb-3">
                                                 <span className="text-[10px] font-black tracking-widest uppercase text-slate-500 bg-white/5 px-2 py-0.5 rounded">BALL {log.ball}/{log.maxBalls}</span>
-                                                <span className={`text-xl font-black ${details.netResult > 0 ? 'text-green-400' : details.netResult < 0 ? 'text-red-400' : 'text-slate-400'}`}>
-                                                    {details.netResult > 0 ? `+${details.netResult}` : details.netResult}
+                                                <span className={`text-xl font-black ${details.runs > 0 ? 'text-green-400' : details.isWicket ? 'text-red-500' : 'text-slate-400'}`}>
+                                                    {details.isWicket ? 'OUT' : `+${details.runs}`}
                                                 </span>
                                             </div>
 
                                             <div className="grid grid-cols-2 gap-4 text-xs">
-                                                {/* Batting Breakdown */}
                                                 <div className="flex flex-col bg-white/5 p-2 rounded border border-white/5">
                                                     <span className="text-slate-400 font-bold truncate">{details.eventDescription.split(' vs ')[0].split(' (')[0]}</span>
                                                     <div className="flex items-center justify-between mt-1">
@@ -380,9 +392,8 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
                                                     </div>
                                                 </div>
 
-                                                {/* Bowling Breakdown */}
                                                 <div className="flex flex-col bg-white/5 p-2 rounded border border-white/5">
-                                                    <span className="text-slate-400 font-bold truncate">{details.eventDescription.split(' vs ')[1].split(' (')[0]}</span>
+                                                    <span className="text-slate-400 font-bold truncate">{details.eventDescription.split(' vs ')[1]?.split(' (')[0] || 'Bowler'}</span>
                                                     <div className="flex items-center justify-between mt-1">
                                                         <span className="text-slate-500">Roll: <span className="text-white font-bold">{details.bowlingRoll}</span></span>
                                                         <span className="text-blue-400">Mult: <span className="text-blue-400 font-bold">x{details.bowlMultiplier}</span></span>
@@ -409,23 +420,48 @@ export default function MatchScoreboardPage({ params }: { params: Promise<{ matc
                                     <div className="flex justify-between items-center w-full">
                                         <div className="flex flex-col items-center gap-2">
                                             <span className="text-primary font-bold text-xs uppercase tracking-widest">Bat Roll</span>
-                                            <div className="size-24 bg-gradient-to-br from-slate-800 to-black rounded-xl border-2 border-primary flex items-center justify-center shadow-[0_0_20px_rgba(43,238,121,0.3)]">
-                                                <span className="text-6xl font-black text-white">{lastRoll.battingRoll}</span>
-                                            </div>
+                                            <motion.div
+                                                animate={isRolling ? { scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] } : {}}
+                                                transition={{ repeat: isRolling ? Infinity : 0, duration: 0.2 }}
+                                                className="size-24 bg-gradient-to-br from-slate-800 to-black rounded-xl border-2 border-primary flex items-center justify-center shadow-[0_0_20px_rgba(43,238,121,0.3)]"
+                                            >
+                                                <span className="text-6xl font-black text-white">
+                                                    {isRolling ? scrambleBat : lastRoll.battingRoll}
+                                                </span>
+                                            </motion.div>
                                         </div>
 
                                         <div className="text-center w-32 shrink-0">
-                                            <span className="block text-4xl font-black text-white mb-2 drop-shadow-md">
-                                                {lastRoll.netResult > 0 ? `+${lastRoll.netResult}` : lastRoll.netResult}
-                                            </span>
-                                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest bg-black/50 px-2 py-1 rounded-full border border-white/5">Net Value</span>
+                                            {isRolling ? (
+                                                <div className="flex flex-col items-center justify-center h-full gap-2">
+                                                    <div className="w-8 h-8 border-4 border-white/20 border-t-primary rounded-full animate-spin"></div>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <motion.span
+                                                        initial={{ scale: 0.5, opacity: 0 }}
+                                                        animate={{ scale: 1, opacity: 1 }}
+                                                        key={`net-${lastRoll.runs}-${lastRoll.isWicket}-${gameState.team1Score.balls + gameState.team2Score.balls}`}
+                                                        className={`block text-4xl font-black mb-2 drop-shadow-md ${lastRoll.isWicket ? 'text-red-500' : 'text-white'}`}
+                                                    >
+                                                        {lastRoll.isWicket ? 'OUT' : `+${lastRoll.runs}`}
+                                                    </motion.span>
+                                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest bg-black/50 px-2 py-1 rounded-full border border-white/5">Result</span>
+                                                </>
+                                            )}
                                         </div>
 
                                         <div className="flex flex-col items-center gap-2">
                                             <span className="text-blue-400 font-bold text-xs uppercase tracking-widest">Bowl Roll</span>
-                                            <div className="size-24 bg-gradient-to-br from-slate-800 to-black rounded-xl border-2 border-blue-500 flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.3)]">
-                                                <span className="text-6xl font-black text-white">{lastRoll.bowlingRoll}</span>
-                                            </div>
+                                            <motion.div
+                                                animate={isRolling ? { scale: [1, 1.1, 1], rotate: [0, -5, 5, 0] } : {}}
+                                                transition={{ repeat: isRolling ? Infinity : 0, duration: 0.2 }}
+                                                className="size-24 bg-gradient-to-br from-slate-800 to-black rounded-xl border-2 border-blue-500 flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.3)]"
+                                            >
+                                                <span className="text-6xl font-black text-white">
+                                                    {isRolling ? scrambleBowl : lastRoll.bowlingRoll}
+                                                </span>
+                                            </motion.div>
                                         </div>
                                     </div>
                                 ) : (

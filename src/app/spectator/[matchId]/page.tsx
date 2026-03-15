@@ -229,8 +229,8 @@ export default function SpectatorMatchPage({ params }: { params: Promise<{ match
                                     <div key={i} className={`p-4 rounded-xl border ${i === 0 ? 'bg-black/60 border-primary shadow-[0_0_15px_rgba(43,238,121,0.15)]' : 'bg-black/30 border-white/5 opacity-80'} transition-all`}>
                                         <div className="flex justify-between items-center mb-3">
                                             <span className="text-[10px] font-black tracking-widest uppercase text-slate-500 bg-white/5 px-2 py-0.5 rounded">BALL {log.ball}/{log.maxBalls}</span>
-                                            <span className={`text-xl font-black ${details.netResult > 0 ? 'text-green-400' : details.netResult < 0 ? 'text-red-400' : 'text-slate-400'}`}>
-                                                {details.netResult > 0 ? `+${details.netResult}` : details.netResult}
+                                            <span className={`text-xl font-black ${details.runs > 0 ? 'text-green-400' : details.isWicket ? 'text-red-500' : 'text-slate-400'}`}>
+                                                {details.isWicket ? 'OUT' : `+${details.runs}`}
                                             </span>
                                         </div>
 
@@ -282,10 +282,10 @@ export default function SpectatorMatchPage({ params }: { params: Promise<{ match
                                     </div>
 
                                     <div className="text-center w-32 shrink-0">
-                                        <span className="block text-4xl font-black text-white mb-2 drop-shadow-md">
-                                            {lastRoll.netResult > 0 ? `+${lastRoll.netResult}` : lastRoll.netResult}
+                                        <span className={`block text-4xl font-black mb-2 drop-shadow-md ${lastRoll.isWicket ? 'text-red-500' : 'text-white'}`}>
+                                            {lastRoll.isWicket ? 'OUT' : `+${lastRoll.runs}`}
                                         </span>
-                                        <span className="text-xs font-bold text-slate-400 uppercase tracking-widest bg-black/50 px-2 py-1 rounded-full border border-white/5">Net Value</span>
+                                        <span className="text-xs font-bold text-slate-400 uppercase tracking-widest bg-black/50 px-2 py-1 rounded-full border border-white/5">Result</span>
                                     </div>
 
                                     <div className="flex flex-col items-center gap-2">

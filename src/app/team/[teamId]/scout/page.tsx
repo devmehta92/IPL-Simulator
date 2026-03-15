@@ -1,15 +1,14 @@
 'use client';
 
-import React, { useEffect, useState, use, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, use, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { PlayerData, TeamData } from '@/types';
+import { PlayerData } from '@/types';
 
 export default function ScoutingPage({ params }: { params: Promise<{ teamId: string }> }) {
     const { teamId } = use(params);
     const router = useRouter();
-    
-    const [team, setTeam] = useState<TeamData | null>(null);
+
     const [players, setPlayers] = useState<PlayerData[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -19,9 +18,8 @@ export default function ScoutingPage({ params }: { params: Promise<{ teamId: str
 
     useEffect(() => {
         const loadInitialData = async () => {
-            // Fetch team to get session context
-            const { data: teamData } = await supabase.from('teams').select('*').eq('id', teamId).single();
-            if (teamData) setTeam(teamData);
+            // Fetch team to verify existence internally
+            await supabase.from('teams').select('*').eq('id', teamId).single();
 
             // Fetch all players
             const { data: allPlayers } = await supabase.from('players').select('*').order('name', { ascending: true });
@@ -38,8 +36,8 @@ export default function ScoutingPage({ params }: { params: Promise<{ teamId: str
 
     const toggleWatch = (playerId: string) => {
         setWatchlist(prev => {
-            const next = prev.includes(playerId) 
-                ? prev.filter(id => id !== playerId) 
+            const next = prev.includes(playerId)
+                ? prev.filter(id => id !== playerId)
                 : [...prev, playerId];
             localStorage.setItem(`watchlist_${teamId}`, JSON.stringify(next));
             return next;
@@ -69,7 +67,7 @@ export default function ScoutingPage({ params }: { params: Promise<{ teamId: str
                     <div className="h-6 w-px bg-white/10 mx-2"></div>
                     <h1 className="text-xl font-bold text-white tracking-tight">Scout Player Pool</h1>
                 </div>
-                
+
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2 px-4 py-2 bg-yellow-500/10 rounded-full border border-yellow-500/20">
                         <span className="material-symbols-outlined text-yellow-500 text-sm">star</span>
@@ -84,8 +82,8 @@ export default function ScoutingPage({ params }: { params: Promise<{ teamId: str
                     {/* Search */}
                     <div className="flex-1 relative">
                         <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">search</span>
-                        <input 
-                            type="text" 
+                        <input
+                            type="text"
                             placeholder="Search by player name..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
@@ -140,9 +138,9 @@ export default function ScoutingPage({ params }: { params: Promise<{ teamId: str
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                             {filteredPlayers.map(player => (
-                                <ScoutCard 
-                                    key={player.id} 
-                                    player={player} 
+                                <ScoutCard
+                                    key={player.id}
+                                    player={player}
                                     isWatched={watchlist.includes(player.id)}
                                     onToggleWatch={() => toggleWatch(player.id)}
                                 />
@@ -158,7 +156,7 @@ export default function ScoutingPage({ params }: { params: Promise<{ teamId: str
 function ScoutCard({ player, isWatched, onToggleWatch }: { player: PlayerData, isWatched: boolean, onToggleWatch: () => void }) {
     return (
         <div className={`relative group bg-surface-dark border ${isWatched ? 'border-yellow-500/50 shadow-[0_0_15px_rgba(234,179,8,0.1)]' : 'border-white/10 hover:border-primary/50'} rounded-2xl overflow-hidden transition-all duration-300`}>
-            <button 
+            <button
                 onClick={onToggleWatch}
                 className={`absolute top-3 right-3 z-10 size-8 rounded-full flex items-center justify-center transition-all ${isWatched ? 'bg-yellow-500 text-black' : 'bg-black/40 text-slate-500 hover:text-white'}`}
             >

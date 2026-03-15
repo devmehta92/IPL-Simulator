@@ -52,7 +52,8 @@ export interface LogEntry {
         bowlMultiplier: number;
         batScore: number;
         bowlScore: number;
-        netResult: number;
+        runs: number;
+        isWicket: boolean;
         isVolatile: boolean;
         eventDescription: string;
     };

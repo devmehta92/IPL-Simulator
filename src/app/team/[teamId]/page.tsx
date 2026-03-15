@@ -80,16 +80,12 @@ export default function TeamDashboardPage({ params }: { params: Promise<{ teamId
                 setRoster(rosterData as unknown as RosterData[]);
             }
 
-            // Fetch All Teams in session to determine the global sold pool
-            const { data: teamsInSession } = await supabase.from('teams').select('id').eq('session_id', teamData.session_id);
-            const teamIds = teamsInSession?.map(t => t.id) || [];
-
-            const { data: rostersData } = await supabase.from('team_rosters').select('player_id').in('team_id', teamIds);
-            const soldPlayerIds = new Set(rostersData?.map(r => r.player_id) || []);
-
-            const { data: allPlayers } = await supabase.from('players').select('*');
-            if (allPlayers) {
-                setUnsoldPlayers(allPlayers.filter(p => !soldPlayerIds.has(p.id)));
+            // Fetch unsold pool using the optimized RPC
+            const { data: availablePlayers } = await supabase.rpc('get_available_players', {
+                p_session_id: teamData.session_id
+            });
+            if (availablePlayers) {
+                setUnsoldPlayers(availablePlayers as unknown as PlayerData[]);
             }
         }
         setIsLoading(false);
@@ -229,7 +225,7 @@ export default function TeamDashboardPage({ params }: { params: Promise<{ teamId
                         </div>
 
                         {/* Scouting Shortcut */}
-                        <button 
+                        <button
                             onClick={() => router.push(`/team/${teamId}/scout`)}
                             className="w-full bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-4 flex items-center justify-between group transition-all"
                         >
@@ -394,7 +390,6 @@ export default function TeamDashboardPage({ params }: { params: Promise<{ teamId
                                         name={r.players.name}
                                         role={r.players.role}
                                         price={r.bought_for}
-                                        nationality={r.players.nationality}
                                         category={r.players.category}
                                         isStarting={r.is_starting}
                                     />
@@ -423,7 +418,7 @@ function QuotaProgress({ label, current, min, color }: { label: string, current:
     );
 }
 
-function PlayerCard({ name, role, price, category, nationality, isStarting, battingStat, bowlingStat, power }: { name: string, role: string, price: number, category: string, nationality?: string, isStarting?: boolean, battingStat?: number, bowlingStat?: number, power?: number }) {
+function PlayerCard({ name, role, price, category, isStarting, battingStat, bowlingStat, power }: { name: string, role: string, price: number, category: string, isStarting?: boolean, battingStat?: number, bowlingStat?: number, power?: number }) {
     const isStar = category === 'STAR';
 
     return (

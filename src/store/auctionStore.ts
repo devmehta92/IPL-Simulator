@@ -11,7 +11,7 @@ type AuctionState = {
 
 type AuctionStore = {
     state: AuctionState;
-    updateState: (newState: AuctionState) => void;
+    updateState: (newState: Partial<AuctionState>) => void;
 };
 
 export const useAuctionStore = create<AuctionStore>((set) => ({
@@ -23,5 +23,7 @@ export const useAuctionStore = create<AuctionStore>((set) => ({
         bidHistory: [],
         unsoldQueue: []
     },
-    updateState: (newState) => set({ state: newState }),
+    updateState: (newState) => set((prev) => ({
+        state: { ...prev.state, ...newState }
+    })),
 }));

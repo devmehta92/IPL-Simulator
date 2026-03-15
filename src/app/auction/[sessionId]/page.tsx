@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, use, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import usePartySocket from 'partysocket/react';
 import { useAuctionStore } from '@/store/auctionStore';
 import { supabase } from '@/lib/supabase';
@@ -65,21 +66,17 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ sessionI
         if (!teamsData) return;
         setTeams(teamsData);
 
-        // Fetch All Players
-        const { data: allPlayers } = await supabase.from('players').select('*');
-        if (!allPlayers) return;
+        // Fetch only available players using the optimized RPC
+        const { data: availablePlayers, error } = await supabase.rpc('get_available_players', {
+            p_session_id: sessionId
+        });
 
-        // Fetch All Rosters for these teams (so we know who is sold)
-        const teamIds = teamsData.map(t => t.id);
-        const { data: rostersData } = await supabase.from('team_rosters')
-            .select('player_id')
-            .in('team_id', teamIds);
+        if (error) {
+            console.error("Error fetching available players:", error);
+            return;
+        }
 
-        const soldPlayerIds = new Set(rostersData?.map(r => r.player_id) || []);
-
-        // Unsold Queue items from PartyKit State might have depreciated prices, but let's just find base available
-        const available = allPlayers.filter(p => !soldPlayerIds.has(p.id));
-        setUnsoldPlayers(available);
+        setUnsoldPlayers(availablePlayers as unknown as PlayerData[]);
     }, [sessionId]);
 
     useEffect(() => {
@@ -218,9 +215,10 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ sessionI
                 socket.send(JSON.stringify({ type: 'SHOW_PLAYER', playerId: null, basePrice: 0 }));
             }, 3000);
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Critical Allocation Error:", error);
-            alert(`Allocation Failed: ${error.message || 'Unknown Error'}. The player is still active.`);
+            const err = error as Error;
+            alert(`Allocation Failed: ${err.message || 'Unknown Error'}. The player is still active.`);
         } finally {
             setIsProcessing(false);
         }
@@ -467,91 +465,122 @@ export default function LiveAuctionPage({ params }: { params: Promise<{ sessionI
                                     <span className="material-symbols-outlined text-[250px] text-white">sports_cricket</span>
                                 </div>
 
-                                <div className="flex-1 flex flex-col items-center justify-center p-12 z-20 text-center animate-in zoom-in-95 duration-500">
-                                    {state.status === 'SOLD' && (
-                                        <div className="absolute inset-0 bg-green-500/20 backdrop-blur-sm z-50 flex items-center justify-center">
-                                            <div className="bg-black text-primary p-8 rounded-3xl border-4 border-primary shadow-[0_0_100px_rgba(43,238,121,0.5)] transform -rotate-12 animate-in zoom-in slide-in-from-bottom-10 spin-in-12 duration-500">
-                                                <h2 className="text-8xl font-black uppercase tracking-tighter">SOLD</h2>
-                                                <p className="text-2xl mt-2 text-white font-bold">{teams.find(t => t.id === selectedTeamId)?.name}</p>
+                                <AnimatePresence mode="wait">
+                                    <motion.div
+                                        key={activePlayer.id}
+                                        initial={{ opacity: 0, scale: 0.8, y: 50 }}
+                                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                                        exit={{ opacity: 0, scale: 1.1, filter: 'blur(10px)' }}
+                                        transition={{ type: "spring", bounce: 0.4, duration: 0.8 }}
+                                        className="flex-1 flex flex-col items-center justify-center p-12 z-20 text-center w-full relative"
+                                    >
+                                        <AnimatePresence>
+                                            {state.status === 'SOLD' && (
+                                                <motion.div
+                                                    initial={{ opacity: 0 }}
+                                                    animate={{ opacity: 1 }}
+                                                    exit={{ opacity: 0 }}
+                                                    className="absolute inset-0 bg-green-500/20 backdrop-blur-sm z-50 flex items-center justify-center rounded-2xl"
+                                                >
+                                                    <motion.div
+                                                        initial={{ scale: 3, rotate: -45, opacity: 0 }}
+                                                        animate={{ scale: 1, rotate: -12, opacity: 1 }}
+                                                        transition={{ type: 'spring', stiffness: 300, damping: 15 }}
+                                                        className="bg-black text-primary p-8 rounded-3xl border-4 border-primary shadow-[0_0_100px_rgba(43,238,121,0.5)]"
+                                                    >
+                                                        <h2 className="text-8xl font-black uppercase tracking-tighter">SOLD</h2>
+                                                        <p className="text-2xl mt-2 text-white font-bold">{teams.find(t => t.id === selectedTeamId)?.name}</p>
+                                                    </motion.div>
+                                                </motion.div>
+                                            )}
+                                            {state.status === 'UNSOLD' && (
+                                                <motion.div
+                                                    initial={{ opacity: 0 }}
+                                                    animate={{ opacity: 1 }}
+                                                    exit={{ opacity: 0 }}
+                                                    className="absolute inset-0 bg-red-900/40 backdrop-blur-sm z-50 flex items-center justify-center rounded-2xl"
+                                                >
+                                                    <motion.div
+                                                        initial={{ scale: 3, rotate: 45, opacity: 0 }}
+                                                        animate={{ scale: 1, rotate: 6, opacity: 1 }}
+                                                        transition={{ type: 'spring', stiffness: 300, damping: 15 }}
+                                                        className="bg-black text-red-500 p-8 rounded-3xl border-4 border-red-500"
+                                                    >
+                                                        <h2 className="text-8xl font-black uppercase tracking-tighter">UNSOLD</h2>
+                                                    </motion.div>
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+
+                                        <div className="inline-flex items-center gap-2 bg-black/60 backdrop-blur-md border border-white/10 px-4 py-1.5 rounded-full mb-6 relative">
+                                            <span className="w-2 h-2 rounded-full bg-primary animate-pulse relative z-10"></span>
+                                            <span className="text-primary text-sm font-bold uppercase tracking-widest">Active Lot</span>
+                                            {/* Pulse effect */}
+                                            <div className="absolute top-1 left-[14px] w-2 h-2 bg-primary rounded-full animate-ping opacity-75"></div>
+                                        </div>
+
+                                        <h1 className="text-6xl justify-center flex items-center gap-4 lg:text-8xl font-black text-white tracking-tight leading-none mb-6">
+                                            {activePlayer.name}
+                                        </h1>
+
+                                        <div className="flex items-center gap-6 mt-4">
+                                            <div className={`flex items-center gap-2 px-6 py-3 rounded-xl border ${activePlayer.category === 'STAR' ? 'bg-yellow-500/20 border-yellow-500/30' : activePlayer.category === 'CONSISTENT' ? 'bg-blue-500/20 border-blue-500/30' : activePlayer.category === 'VOLATILE' ? 'bg-purple-500/20 border-purple-500/30' : 'bg-slate-500/20 border-slate-500/30'}`}>
+                                                <span className={`material-symbols-outlined ${activePlayer.category === 'STAR' ? 'text-yellow-400' : activePlayer.category === 'CONSISTENT' ? 'text-blue-400' : activePlayer.category === 'VOLATILE' ? 'text-purple-400' : 'text-slate-400'}`}>
+                                                    {activePlayer.category === 'STAR' ? 'military_tech' : activePlayer.category === 'CONSISTENT' ? 'verified' : activePlayer.category === 'VOLATILE' ? 'local_fire_department' : 'sentiment_satisfied'}
+                                                </span>
+                                                <span className={`font-black tracking-widest text-lg uppercase ${activePlayer.category === 'STAR' ? 'text-yellow-400' : activePlayer.category === 'CONSISTENT' ? 'text-blue-400' : activePlayer.category === 'VOLATILE' ? 'text-purple-400' : 'text-slate-400'}`}>
+                                                    {activePlayer.category} tier
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-2 px-6 py-3 bg-white/5 rounded-xl border border-white/5">
+                                                <span className="material-symbols-outlined text-primary">sports_cricket</span>
+                                                <span className="text-white font-bold text-xl">{activePlayer.role === 'BAT' ? 'Batsman' : activePlayer.role === 'BOWL' ? 'Bowler' : activePlayer.role === 'WK' ? 'Wicket Keeper' : 'All-Rounder'}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2 px-6 py-3 bg-white/5 rounded-xl border border-white/5">
+                                                <span className="material-symbols-outlined text-blue-400">public</span>
+                                                <span className="text-white font-bold text-xl">{activePlayer.nationality}</span>
                                             </div>
                                         </div>
-                                    )}
-                                    {state.status === 'UNSOLD' && (
-                                        <div className="absolute inset-0 bg-red-900/40 backdrop-blur-sm z-50 flex items-center justify-center">
-                                            <div className="bg-black text-red-500 p-8 rounded-3xl border-4 border-red-500 transform rotate-6 animate-in zoom-in duration-300">
-                                                <h2 className="text-8xl font-black uppercase tracking-tighter">UNSOLD</h2>
+
+                                        {/* Player Stats Row */}
+                                        <div className="flex items-center gap-8 mt-10">
+                                            <div className="flex flex-col items-center">
+                                                <span className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">Batting</span>
+                                                <div className="flex items-center gap-1">
+                                                    {[...Array(10)].map((_, i) => (
+                                                        <div key={i} className={`w-2 h-6 rounded-full ${i < (activePlayer.batting_stat || 5) ? 'bg-primary' : 'bg-white/10'}`}></div>
+                                                    ))}
+                                                    <span className="ml-2 text-2xl font-black text-white">{activePlayer.batting_stat || 5}</span>
+                                                </div>
+                                            </div>
+                                            <div className="h-12 w-[1px] bg-white/10"></div>
+                                            <div className="flex flex-col items-center">
+                                                <span className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">Bowling</span>
+                                                <div className="flex items-center gap-1">
+                                                    {[...Array(10)].map((_, i) => (
+                                                        <div key={i} className={`w-2 h-6 rounded-full ${i < (activePlayer.bowling_stat || 5) ? 'bg-blue-500' : 'bg-white/10'}`}></div>
+                                                    ))}
+                                                    <span className="ml-2 text-2xl font-black text-white">{activePlayer.bowling_stat || 5}</span>
+                                                </div>
+                                            </div>
+                                            <div className="h-12 w-[1px] bg-white/10"></div>
+                                            <div className="flex flex-col items-center">
+                                                <span className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">Power</span>
+                                                <div className="text-4xl font-black text-yellow-500">{activePlayer.base_power || 6}</div>
                                             </div>
                                         </div>
-                                    )}
 
-                                    <div className="inline-flex items-center gap-2 bg-black/60 backdrop-blur-md border border-white/10 px-4 py-1.5 rounded-full mb-6 relative">
-                                        <span className="w-2 h-2 rounded-full bg-primary animate-pulse relative z-10"></span>
-                                        <span className="text-primary text-sm font-bold uppercase tracking-widest">Active Lot</span>
-                                        {/* Pulse effect */}
-                                        <div className="absolute top-1 left-[14px] w-2 h-2 bg-primary rounded-full animate-ping opacity-75"></div>
-                                    </div>
-
-                                    <h1 className="text-6xl justify-center flex items-center gap-4 lg:text-8xl font-black text-white tracking-tight leading-none mb-6">
-                                        {activePlayer.name}
-                                    </h1>
-
-                                    <div className="flex items-center gap-6 mt-4">
-                                        <div className={`flex items-center gap-2 px-6 py-3 rounded-xl border ${activePlayer.category === 'STAR' ? 'bg-yellow-500/20 border-yellow-500/30' : activePlayer.category === 'CONSISTENT' ? 'bg-blue-500/20 border-blue-500/30' : activePlayer.category === 'VOLATILE' ? 'bg-purple-500/20 border-purple-500/30' : 'bg-slate-500/20 border-slate-500/30'}`}>
-                                            <span className={`material-symbols-outlined ${activePlayer.category === 'STAR' ? 'text-yellow-400' : activePlayer.category === 'CONSISTENT' ? 'text-blue-400' : activePlayer.category === 'VOLATILE' ? 'text-purple-400' : 'text-slate-400'}`}>
-                                                {activePlayer.category === 'STAR' ? 'military_tech' : activePlayer.category === 'CONSISTENT' ? 'verified' : activePlayer.category === 'VOLATILE' ? 'local_fire_department' : 'sentiment_satisfied'}
-                                            </span>
-                                            <span className={`font-black tracking-widest text-lg uppercase ${activePlayer.category === 'STAR' ? 'text-yellow-400' : activePlayer.category === 'CONSISTENT' ? 'text-blue-400' : activePlayer.category === 'VOLATILE' ? 'text-purple-400' : 'text-slate-400'}`}>
-                                                {activePlayer.category} tier
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-2 px-6 py-3 bg-white/5 rounded-xl border border-white/5">
-                                            <span className="material-symbols-outlined text-primary">sports_cricket</span>
-                                            <span className="text-white font-bold text-xl">{activePlayer.role === 'BAT' ? 'Batsman' : activePlayer.role === 'BOWL' ? 'Bowler' : activePlayer.role === 'WK' ? 'Wicket Keeper' : 'All-Rounder'}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2 px-6 py-3 bg-white/5 rounded-xl border border-white/5">
-                                            <span className="material-symbols-outlined text-blue-400">public</span>
-                                            <span className="text-white font-bold text-xl">{activePlayer.nationality}</span>
-                                        </div>
-                                    </div>
-
-                                    {/* Player Stats Row */}
-                                    <div className="flex items-center gap-8 mt-10">
-                                        <div className="flex flex-col items-center">
-                                            <span className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">Batting</span>
-                                            <div className="flex items-center gap-1">
-                                                {[...Array(10)].map((_, i) => (
-                                                    <div key={i} className={`w-2 h-6 rounded-full ${i < (activePlayer.batting_stat || 5) ? 'bg-primary' : 'bg-white/10'}`}></div>
-                                                ))}
-                                                <span className="ml-2 text-2xl font-black text-white">{activePlayer.batting_stat || 5}</span>
+                                        {/* Active Base Price TV Readout */}
+                                        <div className="mt-16 bg-black/40 border-2 border-primary/20 p-8 rounded-3xl inline-flex flex-col items-center">
+                                            <span className="text-slate-400 font-bold uppercase tracking-widest mb-2">Asking Base Price</span>
+                                            <div className="text-7xl font-black text-white" style={{ textShadow: '0 0 20px rgba(43, 238, 121, 0.3)' }}>
+                                                <span className="text-4xl align-top text-primary mr-2">₹</span>
+                                                {activePlayer.base_price.toFixed(2)}
+                                                <span className="text-3xl text-slate-400 font-bold ml-2">Cr</span>
                                             </div>
                                         </div>
-                                        <div className="h-12 w-[1px] bg-white/10"></div>
-                                        <div className="flex flex-col items-center">
-                                            <span className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">Bowling</span>
-                                            <div className="flex items-center gap-1">
-                                                {[...Array(10)].map((_, i) => (
-                                                    <div key={i} className={`w-2 h-6 rounded-full ${i < (activePlayer.bowling_stat || 5) ? 'bg-blue-500' : 'bg-white/10'}`}></div>
-                                                ))}
-                                                <span className="ml-2 text-2xl font-black text-white">{activePlayer.bowling_stat || 5}</span>
-                                            </div>
-                                        </div>
-                                        <div className="h-12 w-[1px] bg-white/10"></div>
-                                        <div className="flex flex-col items-center">
-                                            <span className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">Power</span>
-                                            <div className="text-4xl font-black text-yellow-500">{activePlayer.base_power || 6}</div>
-                                        </div>
-                                    </div>
-
-                                    {/* Active Base Price TV Readout */}
-                                    <div className="mt-16 bg-black/40 border-2 border-primary/20 p-8 rounded-3xl inline-flex flex-col items-center">
-                                        <span className="text-slate-400 font-bold uppercase tracking-widest mb-2">Asking Base Price</span>
-                                        <div className="text-7xl font-black text-white" style={{ textShadow: '0 0 20px rgba(43, 238, 121, 0.3)' }}>
-                                            <span className="text-4xl align-top text-primary mr-2">₹</span>
-                                            {activePlayer.base_price.toFixed(2)}
-                                            <span className="text-3xl text-slate-400 font-bold ml-2">Cr</span>
-                                        </div>
-                                    </div>
-                                </div>
+                                    </motion.div>
+                                </AnimatePresence>
                             </>
                         )}
                     </div>
